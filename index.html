@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>근태 자동 분석기</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Costco Samsung Attendance Checker</p>
+        <h1>근태 자동 분석기</h1>
+        <p class="desc">엑셀 4개를 업로드하면 MX/CE 기준으로 지각, 근태 미입력, 퇴근 미입력, 스케줄 불일치를 자동 판정하고 결과 엑셀을 생성합니다.</p>
+      </div>
+      <div class="badge">1차 자동판정 버전</div>
+    </section>
+
+    <section class="card grid">
+      <label class="upload">
+        <span>1. 인력 및 점포별 근무시간.xlsx</span>
+        <input id="fileMaster" type="file" accept=".xlsx,.xls" />
+      </label>
+      <label class="upload">
+        <span>2. 매장근무계획관리.xlsx</span>
+        <input id="filePlan" type="file" accept=".xlsx,.xls" />
+      </label>
+      <label class="upload">
+        <span>3. 웍스스케줄.xlsx</span>
+        <input id="fileWorks" type="file" accept=".xlsx,.xls" />
+      </label>
+      <label class="upload">
+        <span>4. 근태관리.xlsx</span>
+        <input id="fileAttendance" type="file" accept=".xlsx,.xls" />
+      </label>
+    </section>
+
+    <section class="card options">
+      <div>
+        <label for="monthInput">분석 월</label>
+        <input id="monthInput" type="month" />
+        <small>비워두면 근태관리/웍스스케줄 날짜에서 자동 추정합니다.</small>
+      </div>
+      <div>
+        <label for="baseDateInput">판정 기준일</label>
+        <input id="baseDateInput" type="date" />
+        <small>비워두면 근태관리의 마지막 출근일까지만 판정합니다.</small>
+      </div>
+    </section>
+
+    <section class="actions">
+      <button id="runBtn">근태 분석 실행</button>
+      <button id="resetBtn" class="secondary">초기화</button>
+    </section>
+
+    <section id="status" class="status">파일 4개를 업로드한 뒤 분석을 실행하세요.</section>
+
+    <section class="card guide">
+      <h2>적용 기준</h2>
+      <ul>
+        <li>CE: 매장근무계획관리에서 “근무” 포함일에 출근 여부만 확인합니다.</li>
+        <li>MX: 기본은 웍스스케줄의 A/B/C조 기준으로 지각을 판정합니다.</li>
+        <li>웍스스케줄에 “순환” 포함 시 매장근무계획관리의 근무A/B/C 기준을 사용합니다.</li>
+        <li>웍스스케줄에 “교육” 포함 시 지각/근태 미입력 판정에서 제외합니다.</li>
+        <li>출근 기준시간과 같은 시간에 찍혀도 지각으로 판정합니다.</li>
+        <li>소명처리 시트에서 정시인정/출근인정/퇴근인정을 입력하면 최종요약 수식에 반영됩니다.</li>
+      </ul>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
