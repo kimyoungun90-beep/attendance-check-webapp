@@ -68,6 +68,10 @@
     if (typeof value === 'number' && Number.isFinite(value)) return excelSerialToDate(value);
     const s = clean(value);
     if (!s) return null;
+    if (/^\d+(?:\.\d+)?$/.test(s)) {
+      const n = Number(s);
+      if (n > 20000 && n < 70000) return excelSerialToDate(n);
+    }
     let m = s.match(/^(\d{4})[-/.년\s]*(\d{1,2})[-/.월\s]*(\d{1,2})/);
     if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
     m = s.match(/^(\d{4})(\d{2})(\d{2})$/);
@@ -87,6 +91,10 @@
     }
     const s = clean(value);
     if (!s) return null;
+    if (/^\d+(?:\.\d+)?$/.test(s)) {
+      const n = Number(s);
+      if (n >= 0 && n < 1) return Math.round(n * 24 * 60);
+    }
     let m = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
     if (!m) m = s.match(/^(오전|오후)\s*(\d{1,2}):(\d{2})$/);
     if (m && (m[1] === '오전' || m[1] === '오후')) {
@@ -160,7 +168,7 @@
       if (wb.SheetNames.includes(name)) { sheetName = name; break; }
     }
     const ws = wb.Sheets[sheetName];
-    return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false, blankrows: false });
+    return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: false });
   }
 
   async function runAnalysis() {
@@ -191,21 +199,34 @@
   function inferYearMonth(attendanceRows, worksRows) {
     const manualMonth = clean($('monthInput').value);
     if (manualMonth) { const [y, m] = manualMonth.split('-').map(Number); return { year: y, month: m }; }
+
+    // 1순위: 웍스스케줄 날짜 헤더. 근태관리에는 전월 말 데이터가 섞일 수 있어서 근태관리 첫 날짜로 월을 잡으면 안 됨.
+    let yearFromAttendance = null;
     const attHeader = findHeaderRow(attendanceRows, ['이름', '근무일자']);
     const dateCol = findCol(attendanceRows[attHeader], '근무일자', 1);
     for (let r = attHeader + 1; r < attendanceRows.length; r++) {
       const d = parseDate(attendanceRows[r][dateCol]);
-      if (d) return { year: d.getFullYear(), month: d.getMonth() + 1 };
+      if (d) { yearFromAttendance = d.getFullYear(); break; }
     }
-    const firstCellMonth = Number(clean(worksRows?.[0]?.[0]));
-    const headerRow = findHeaderRow(worksRows, ['성명'], 5);
+
+    const headerRow = findHeaderRow(worksRows, ['성명'], 20);
     const header = worksRows[headerRow] || [];
     for (let c = 0; c < header.length; c++) {
-      const d = parseDate(header[c]);
+      const d = parseDate(header[c], yearFromAttendance || new Date().getFullYear());
+      if (d) return { year: d.getFullYear(), month: d.getMonth() + 1 };
+    }
+
+    // 2순위: 웍스스케줄 A1 등에 적힌 월 숫자
+    const firstCellMonth = Number(clean(worksRows?.[0]?.[0]));
+    if (firstCellMonth >= 1 && firstCellMonth <= 12) return { year: yearFromAttendance || new Date().getFullYear(), month: firstCellMonth };
+
+    // 3순위: 근태관리 날짜
+    for (let r = attHeader + 1; r < attendanceRows.length; r++) {
+      const d = parseDate(attendanceRows[r][dateCol]);
       if (d) return { year: d.getFullYear(), month: d.getMonth() + 1 };
     }
     const now = new Date();
-    return { year: now.getFullYear(), month: firstCellMonth || now.getMonth() + 1 };
+    return { year: now.getFullYear(), month: now.getMonth() + 1 };
   }
 
   function analyze({ peopleRows, hourRows, planRows, worksRows, attendanceRows }) {
@@ -405,7 +426,7 @@
       for (const dc of dayCols) {
         const value = clean(row[dc.c]);
         const shift = extractPlanShift(value);
-        const rec = { name, date: dc.dKey, value, shift, store };
+        const rec = { name, date: dc.dKey, value, shift, store, sourceRow: r + 1, sourceCol: dc.c + 1, sourceCell: XLSX.utils.encode_cell({ r, c: dc.c }) };
         planByNameDate.set(`${name}|${dc.dKey}`, rec);
         if (value) planReadRows.push(rec);
       }
@@ -414,29 +435,34 @@
   }
 
   function parseWorks(rows, year, month) {
-    const h = findHeaderRow(rows, ['성명'], 6);
+    // 웍스스케줄은 행/열 위치가 자주 바뀌고, 숨김 행이 있을 수 있어서
+    // "성명" 열을 찾은 뒤 그 오른쪽 최대 해당 월 일수만 날짜 컬럼으로 읽는다.
+    const h = findHeaderRow(rows, ['성명'], 20);
     const header = rows[h] || [];
     const nameCol = findCol(header, '성명', 3);
     const storeColHeader = findCol(header, '근무처명', 2);
     const firstDateCol = nameCol + 1;
+    const daysInMonth = new Date(year, month, 0).getDate();
     const dateCols = [];
-    for (let c = firstDateCol; c < header.length; c++) {
+    for (let c = firstDateCol; c < Math.min(header.length, firstDateCol + daysInMonth); c++) {
       let d = parseDate(header[c], year, month);
       if (!d) d = new Date(year, month - 1, c - firstDateCol + 1);
-      if (d.getMonth() + 1 === month) dateCols.push({ c, date: d, dKey: dateKey(d) });
+      if (d.getFullYear() === year && d.getMonth() + 1 === month) {
+        dateCols.push({ c, date: d, dKey: dateKey(d), headerValue: clean(header[c]), cell: XLSX.utils.encode_cell({ r: h, c }) });
+      }
     }
     const worksByNameDate = new Map();
     const worksReadRows = [];
     for (let r = h + 1; r < rows.length; r++) {
       const row = rows[r] || [];
       const name = normalizeName(row[nameCol]);
-      if (!name || name === '필터용') continue;
+      if (!name || name === '필터용' || name.includes('합계')) continue;
       let store = normalizeStore(row[storeColHeader]);
       if (!store) store = normalizeStore(row[0]);
       for (const dc of dateCols) {
         const value = clean(row[dc.c]);
         const shift = extractWorksShift(value);
-        const rec = { name, date: dc.dKey, value, shift, store };
+        const rec = { name, date: dc.dKey, value, shift, store, sourceRow: r + 1, sourceCol: dc.c + 1, sourceCell: XLSX.utils.encode_cell({ r, c: dc.c }), headerCell: dc.cell, headerValue: dc.headerValue };
         worksByNameDate.set(`${name}|${dc.dKey}`, rec);
         if (value) worksReadRows.push(rec);
       }
@@ -529,9 +555,9 @@
     addSheet(wb, '사용방법', [
       ['근태 자동 분석 결과 사용방법'],
       ['1', '자동판정 시트에서 원본 판정 내역을 확인합니다.'],
-      ['2', '소명처리 시트에서 처리결과에 정시인정/출근인정/퇴근인정/교육제외/기타제외 중 하나만 입력해도 제외됩니다. 적용여부는 비워도 됩니다. 단, 적용여부에 미적용을 쓰면 제외되지 않습니다.'],
+      ['2', '소명처리 시트에서 처리결과 또는 처리사유에 정시인정/출근인정/퇴근인정/교육제외/기타제외를 입력하면 제외됩니다. 적용여부는 비워도 됩니다. 단, 적용여부에 미적용을 쓰면 제외되지 않습니다.'],
       ['3', '최종요약은 소명처리의 처리결과/최종제외를 기준으로 감점이 다시 계산됩니다. 입력 후 값이 안 바뀌면 F9 또는 Ctrl+Alt+F9로 재계산하세요.'],
-      ['4', '읽기확인_웍스 시트에서 프로그램이 웍스스케줄을 실제로 어떤 날짜/조로 읽었는지 확인할 수 있습니다.'],
+      ['4', '읽기확인_웍스 시트에서 프로그램이 웍스스케줄을 실제로 어떤 날짜/조/원본셀로 읽었는지 확인할 수 있습니다.'],
       ['5', '휴무/대체휴무/보상휴가/연차/공가/DIDA/예비군/교육은 근태 미입력 감점에서 제외됩니다.'],
       ['분석월', `${result.year}-${String(result.month).padStart(2, '0')}`],
       ['판정기준일', result.baseDate],
@@ -555,7 +581,7 @@
     addReadWorksSheet(wb, result.worksReadRows, result.baseDate);
     addReadPlanSheet(wb, result.planReadRows, result.baseDate);
     addRuleSheet(wb);
-    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v3.xlsx`;
+    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v4.xlsx`;
     XLSX.writeFile(wb, fileName, { bookType: 'xlsx', cellStyles: true });
   }
 
@@ -591,10 +617,11 @@
   }
 
   function exclusionCountFormula(kind, nameCell, extraCriteria = []) {
-    const base = [`'소명처리'!$B:$B,"${kind}"`, `'소명처리'!$C:$C,${nameCell}`, `'소명처리'!$A:$A,"<>미적용"`];
+    // 소명처리 J열(최종제외)이 "제외"인 행만 최종요약에서 차감한다.
+    // J열은 처리결과(I), 처리사유(K), 승인자(L), 비고(M)에 인정/제외/정시가 들어가면 자동으로 "제외"가 된다.
+    const base = [`'소명처리'!$B:$B,"${kind}"`, `'소명처리'!$C:$C,${nameCell}`, `'소명처리'!$J:$J,"제외"`];
     const criteria = base.concat(extraCriteria);
-    const common = criteria.join(',');
-    return `(COUNTIFS(${common},'소명처리'!$I:$I,"*인정*")+COUNTIFS(${common},'소명처리'!$I:$I,"*제외*"))`;
+    return `COUNTIFS(${criteria.join(',')})`;
   }
 
   function addFinalSummarySheet(wb, result, sheetName, sourceRows) {
@@ -645,19 +672,26 @@
   function addExceptionSheet(wb, items) {
     const rows = [['적용여부', '구분', '이름', '날짜', '자동판정', '지각구분', '지각분', '기본감점', '처리결과', '최종제외', '처리사유', '승인자', '비고']];
     for (const x of items) rows.push([x.apply, x.kind, x.name, x.date, x.autoJudgement, x.lateType, x.lateMinutes, x.baseScore, x.result, '', x.reason, x.approver, x.memo]);
-    const ws = addSheet(wb, '소명처리', rows, { widths: [10, 12, 12, 12, 35, 12, 8, 10, 16, 10, 35, 12, 25] });
-    for (let r = 2; r <= rows.length; r++) ws[`J${r}`] = { f: `IF(AND($A${r}<>"미적용",OR(ISNUMBER(SEARCH("인정",$I${r})),ISNUMBER(SEARCH("제외",$I${r})))),"제외","반영")` };
+    const ws = addSheet(wb, '소명처리', rows, { widths: [10, 12, 12, 12, 35, 12, 8, 10, 18, 10, 38, 12, 28] });
+    for (let r = 2; r <= rows.length; r++) {
+      // 적용여부는 비워도 적용. 단, A열에 "미적용"을 쓰면 제외하지 않음.
+      // 처리결과(I), 처리사유(K), 승인자(L), 비고(M) 어디든 인정/제외/정시 문구가 있으면 제외.
+      ws[`J${r}`] = { t: 's', f: `IF($A${r}="미적용","반영",IF(OR(ISNUMBER(SEARCH("인정",$I${r}&$K${r}&$L${r}&$M${r})),ISNUMBER(SEARCH("제외",$I${r}&$K${r}&$L${r}&$M${r})),ISNUMBER(SEARCH("정시",$I${r}&$K${r}&$L${r}&$M${r}))),"제외","반영"))` };
+    }
   }
+
   function addReadWorksSheet(wb, items, baseDate) {
-    const rows = [['이름', '날짜', '점포', '웍스스케줄 원값', '읽은 조', '휴무/제외값 여부']];
-    for (const x of items.filter(v => v.date <= baseDate)) rows.push([x.name, x.date, x.store, x.value, x.shift, isOffLike(x.value) || hasEducation(x.value) ? '제외값' : '근무값']);
-    addSheet(wb, '읽기확인_웍스', rows, { widths: [12, 12, 16, 18, 10, 16] });
+    const rows = [['이름', '날짜', '점포', '웍스스케줄 원값', '읽은 조', '원본셀', '원본행', '원본열', '헤더셀', '헤더값', '휴무/제외값 여부']];
+    for (const x of items.filter(v => v.date <= baseDate)) rows.push([x.name, x.date, x.store, x.value, x.shift, x.sourceCell, x.sourceRow, x.sourceCol, x.headerCell, x.headerValue, isOffLike(x.value) || hasEducation(x.value) ? '제외값' : '근무값']);
+    addSheet(wb, '읽기확인_웍스', rows, { widths: [12, 12, 16, 18, 10, 10, 8, 8, 10, 12, 16] });
   }
+
   function addReadPlanSheet(wb, items, baseDate) {
-    const rows = [['이름', '날짜', '점포', '매장근무계획 원값', '읽은 조', '휴무/제외값 여부']];
-    for (const x of items.filter(v => v.date <= baseDate)) rows.push([x.name, x.date, x.store, x.value, x.shift, isOffLike(x.value) ? '제외값' : '근무값']);
-    addSheet(wb, '읽기확인_매장계획', rows, { widths: [12, 12, 16, 18, 10, 16] });
+    const rows = [['이름', '날짜', '점포', '매장근무계획 원값', '읽은 조', '원본셀', '원본행', '원본열', '휴무/제외값 여부']];
+    for (const x of items.filter(v => v.date <= baseDate)) rows.push([x.name, x.date, x.store, x.value, x.shift, x.sourceCell, x.sourceRow, x.sourceCol, isOffLike(x.value) ? '제외값' : '근무값']);
+    addSheet(wb, '읽기확인_매장계획', rows, { widths: [12, 12, 16, 18, 10, 10, 8, 8, 16] });
   }
+
   function addRuleSheet(wb) {
     const rows = [
       ['구분', '기준', '감점/처리'],
@@ -671,7 +705,7 @@
       ['MX 순환 기준', '웍스스케줄에 “순환” 포함', '매장근무계획관리의 근무A/B/C 기준 사용'],
       ['제외 기준', '휴무/대체휴무/보상휴가/연차/공가/DIDA/예비군/교육', '근태 미입력 감점 제외'],
       ['CE 기준', '매장근무계획관리에 “근무” 포함, 단 휴무성 문구 제외', '출근 여부만 확인'],
-      ['소명 처리', '소명처리 시트에서 처리결과만 입력해도 적용됨. 적용여부는 공란 가능', '정시인정/출근인정/퇴근인정/교육제외/기타제외 또는 인정/제외 포함 문구 시 최종요약에서 제외. 적용여부=미적용이면 제외 안 함'],
+      ['소명 처리', '소명처리 시트에서 처리결과 또는 처리사유에 입력해도 적용됨. 적용여부는 공란 가능', '정시인정/출근인정/퇴근인정/교육제외/기타제외 또는 인정/제외/정시 포함 문구 시 최종요약에서 제외. 적용여부=미적용이면 제외 안 함'],
     ];
     addSheet(wb, '판정기준', rows, { widths: [16, 55, 55] });
   }
