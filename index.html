@@ -14,6 +14,11 @@
         <p class="eyebrow">Costco Samsung Attendance Report</p>
         <h1>근태 관리<br />자동 분석기</h1>
         <p class="desc">엑셀 4개만 업로드하면 CE 근태 미입력, MX 지각·근태 미입력·퇴근 미입력, 소명 반영 최종 요약까지 보고용 엑셀로 정리합니다.</p>
+        <div class="hero-kpis">
+          <div><b>9</b><span>생성 시트</span></div>
+          <div><b>자동</b><span>소명 반영</span></div>
+          <div><b>순환</b><span>매장계획 기준</span></div>
+        </div>
         <div class="chips">
           <span>보고용 MX 최종 요약</span>
           <span>소명 자동 반영</span>
@@ -22,8 +27,8 @@
       </div>
       <aside class="version-card">
         <span class="version-label">CURRENT</span>
-        <strong>v7</strong>
-        <small>시트 축소 · 디자인 개선</small>
+        <strong>v8</strong>
+        <small>순환 기준 강화 · 보고용 개선</small>
       </aside>
     </section>
 
@@ -37,24 +42,28 @@
           <b>01</b>
           <span>인력 및 점포별 근무시간.xlsx</span>
           <small>인력DB / 영업시간DB 기준</small>
+          <em class="file-name">파일 선택 전</em>
           <input id="fileMaster" type="file" accept=".xlsx,.xls" />
         </label>
         <label class="upload">
           <b>02</b>
           <span>매장근무계획관리.xlsx</span>
           <small>CE 근태 확인 / 순환 근무 기준</small>
+          <em class="file-name">파일 선택 전</em>
           <input id="filePlan" type="file" accept=".xlsx,.xls" />
         </label>
         <label class="upload">
           <b>03</b>
           <span>웍스스케줄.xlsx</span>
           <small>MX A/B/C조 및 휴무 기준</small>
+          <em class="file-name">파일 선택 전</em>
           <input id="fileWorks" type="file" accept=".xlsx,.xls" />
         </label>
         <label class="upload">
           <b>04</b>
           <span>근태관리.xlsx</span>
           <small>출근·퇴근 기록 기준</small>
+          <em class="file-name">파일 선택 전</em>
           <input id="fileAttendance" type="file" accept=".xlsx,.xls" />
         </label>
       </div>

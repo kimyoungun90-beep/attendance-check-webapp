@@ -10,6 +10,15 @@
     attendance: $('fileAttendance'),
   };
 
+  Object.values(fileInputs).forEach((input) => {
+    input.addEventListener('change', () => {
+      const box = input.closest('.upload');
+      const nameEl = box?.querySelector('.file-name');
+      if (nameEl) nameEl.textContent = input.files?.[0]?.name || '파일 선택 전';
+      box?.classList.toggle('selected', !!input.files?.[0]);
+    });
+  });
+
   $('runBtn').addEventListener('click', runAnalysis);
   $('resetBtn').addEventListener('click', () => location.reload());
 
@@ -125,7 +134,10 @@
   }
 
   function hasEducation(value) { return clean(value).includes('교육'); }
-  function hasRotation(value) { return clean(value).includes('순환'); }
+  function hasRotation(value) {
+    // '부산순환', '대혁 순환', '순환근무'처럼 어디에 들어가도 순환으로 판단
+    return clean(value).replace(/\s+/g, '').includes('순환');
+  }
 
   function extractPlanShift(value) {
     const s = clean(value);
@@ -239,6 +251,15 @@
     const workHours = parseWorkHours(hourRows);
     const { planByNameDate, dayCols: planDayCols, planReadRows } = parsePlan(planRows, year, month);
     const { worksByNameDate, worksDateCols, worksReadRows } = parseWorks(worksRows, year, month);
+    for (const rec of worksReadRows) {
+      const plan = planByNameDate.get(`${rec.name}|${rec.date}`);
+      rec.planValue = plan?.value || '';
+      rec.planShift = plan?.shift || '';
+      rec.isRotation = hasRotation(rec.value);
+      rec.isEducation = hasEducation(rec.value);
+      rec.appliedBasis = rec.isEducation ? '교육 제외' : rec.isRotation ? '순환→매장계획 기준' : isOffLike(rec.value) ? '휴무/제외' : '웍스 기준';
+      rec.appliedShift = rec.isRotation ? rec.planShift : rec.shift;
+    }
     const { attendanceByNameDate, latestAttendanceDate } = parseAttendance(attendanceRows, peopleByName, peopleByEmp);
 
     let baseDate = latestAttendanceDate;
@@ -263,11 +284,19 @@
         const plan = planByNameDate.get(`${person.name}|${dc.dKey}`);
         const worksText = works?.value || '';
         const planText = plan?.value || '';
-        if (hasEducation(worksText) || hasRotation(worksText)) continue;
+        if (hasEducation(worksText)) continue;
         const ps = extractPlanShift(planText);
         const ws = extractWorksShift(worksText);
         const planOff = isOffLike(planText);
         const worksOff = isOffLike(worksText);
+        if (hasRotation(worksText)) {
+          // 순환 문구가 들어가면 웍스 값과 비교하지 않고 매장근무계획의 근무A/B/C를 기준으로 사용한다.
+          // 단, 매장근무계획에서 조를 찾지 못하면 지각 판정 기준이 없으므로 확인 대상에 남긴다.
+          if (!ps && planText && !planOff) {
+            mismatchRows.push({ name: person.name, date: dc.dKey, store: works?.store || person.store, plan: planText, works: worksText, note: '순환근무이나 매장근무계획에서 근무A/B/C 조 확인 필요' });
+          }
+          continue;
+        }
         if ((ps || ws || planText || worksText) && (ps !== ws || planOff !== worksOff)) {
           mismatchRows.push({
             name: person.name, date: dc.dKey, store: works?.store || person.store,
@@ -287,17 +316,24 @@
         const plan = planByNameDate.get(`${person.name}|${dc.dKey}`);
         const worksText = works?.value || '';
         const planText = plan?.value || '';
-        if (!worksText || isOffLike(worksText) || hasEducation(worksText)) continue;
+        const isRotation = hasRotation(worksText);
+        if (!worksText || hasEducation(worksText)) continue;
+        // 순환 문구가 들어간 날은 웍스 값이 어떤 표현이든 매장근무계획 근무A/B/C를 기준으로 처리한다.
+        // 일반 근무일만 휴무/대체/보상/연차 등 제외값을 웍스 기준으로 제외한다.
+        if (!isRotation && isOffLike(worksText)) continue;
         let basis = '웍스스케줄';
         let shift = extractWorksShift(worksText);
         let scheduleText = worksText;
-        if (hasRotation(worksText)) {
+        if (isRotation) {
           basis = '매장근무계획관리(순환)';
-          if (isOffLike(planText)) continue;
+          if (hasEducation(planText) || isOffLike(planText)) continue;
           shift = extractPlanShift(planText);
           scheduleText = planText || worksText;
         }
-        if (!shift) continue;
+        if (!shift) {
+          if (isRotation) mismatchRows.push({ name: person.name, date: dc.dKey, store: works?.store || plan?.store || person.store, plan: planText, works: worksText, note: '순환근무이나 매장근무계획에서 근무A/B/C 조 확인 불가' });
+          continue;
+        }
         const rec = attendanceByNameDate.get(`${person.name}|${dc.dKey}`);
         const baseStore = works?.store || plan?.store || person.store;
         if (!rec || rec.firstIn === null) {
@@ -564,7 +600,7 @@
     addReadPlanSheet(wb, result.planReadRows, result.baseDate);
     addMismatchSheet(wb, result.mismatchRows);
 
-    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v7.xlsx`;
+    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v8.xlsx`;
     XLSX.writeFile(wb, fileName, { bookType: 'xlsx', cellStyles: true });
   }
 
@@ -614,7 +650,7 @@
       ['업로드 파일', '인력 및 점포별 근무시간 / 매장근무계획관리 / 웍스스케줄 / 근태관리', '엑셀 4개 업로드 후 분석 실행'],
       ['CE 기준', '매장근무계획관리에서 “근무” 포함일만 확인', '출근기록 없으면 CE_근태미입력에 표시'],
       ['MX 기본 기준', '웍스스케줄 A/B/C조 기준', '영업시간DB의 점포별 조 시간 사용'],
-      ['MX 순환 기준', '웍스스케줄에 “순환” 포함', '매장근무계획관리의 근무A/B/C 기준 사용'],
+      ['MX 순환 기준', '웍스스케줄 값 어디든 “순환” 글자 포함', '매장근무계획관리의 근무A/B/C 기준 사용'],
       ['교육 기준', '웍스스케줄에 “교육” 포함', '지각/근태미입력 판정 제외'],
       ['제외 기준', '휴무/휴일/연차/휴가/공가/대체/보상/DIDA/예비군/병가/경조', '근태미입력 감점 제외'],
       ['지각 판정', '기준시간과 같은 시간에 출근 찍어도 지각', '예: 10:00 기준 / 10:00 출근 = 지각 0분'],
@@ -637,21 +673,23 @@
 
   function addMxFinalSummarySheet(wb, result) {
     const mxPeople = result.people.filter(p => p.group === 'MX');
-    const startRow = 8; // 엑셀 실제 행 번호. 1~6행은 보고용 타이틀/KPI 영역, 7행은 표 헤더.
+    const startRow = 9; // 엑셀 실제 행 번호. 1~7행은 보고용 타이틀/KPI 영역, 8행은 표 헤더.
     const rows = [
-      ['MX 근태 최종 요약', '', '', '', '', '', '', '', '', '', '', '', ''],
+      ['MX 근태 최종 요약 보고', '', '', '', '', '', '', '', '', '', '', '', ''],
       ['분석월', `${result.year}-${String(result.month).padStart(2, '0')}`, '판정기준일', result.baseDate, 'MX 인원', mxPeople.length, '소명제외', '', '총 감점', '', '', '', ''],
-      ['지각 인원', '', '근태 미입력 건수', '', '퇴근 미입력 건수', '', '확인 필요자', '', '비고', '소명은 「MX 소명처리」 입력 시 자동 반영', '', '', ''],
+      ['지각 인원', '', '근태 미입력 건수', '', '퇴근 미입력 건수', '', '확인 필요자', '', '보고 메모', '소명 입력 시 최종 요약 자동 반영', '', '', ''],
       ['', '', '', '', '', '', '', '', '', '', '', '', ''],
-      ['판정기준', '10분 이내 지각은 전체 지각 3회 이상 시 감점 / 11~59분은 1회당 -1점 / 60분 이상은 1회당 -2점 / 근태 미입력은 1회당 -3점 / 퇴근 미입력은 3회부터 감점', '', '', '', '', '', '', '', '', '', '', ''],
+      ['핵심 기준', '① 웍스스케줄에 순환 글자 포함 시 매장근무계획의 근무A/B/C 기준  ② 교육은 제외  ③ 10분 이내 지각은 전체 지각 3회 이상 시 감점', '', '', '', '', '', '', '', '', '', '', ''],
+      ['감점 기준', '11~59분: 1회당 -1점 / 60분 이상: 1회당 -2점 / 근태 미입력: 1회당 -3점 / 퇴근 미입력: 3회부터 감점', '', '', '', '', '', '', '', '', '', '', ''],
       ['', '', '', '', '', '', '', '', '', '', '', '', ''],
       ['구분', '이름', '점포', '10분 이내 지각', '11~59분 지각', '60분 이상 지각', '지각 총횟수', '지각감점', '근태미입력', '근태감점', '퇴근미입력', '퇴근감점', '총감점'],
     ];
     for (const p of mxPeople) rows.push([p.group, p.name, p.store, '', '', '', '', '', '', '', '', '', '']);
-    const ws = addSheet(wb, 'MX 최종 요약', rows, { widths: [8, 13, 16, 14, 14, 14, 12, 10, 12, 10, 12, 10, 10], titleRows: [0], subtitleRows: [1, 2, 4], headerRow: 6, autofilter: true });
+    const ws = addSheet(wb, 'MX 최종 요약', rows, { widths: [8, 13, 16, 14, 14, 14, 12, 10, 12, 10, 12, 10, 10], titleRows: [0], subtitleRows: [1, 2, 4, 5], headerRow: 7, autofilter: true });
     ws['!merges'] = [
       { s: { r: 0, c: 0 }, e: { r: 0, c: 12 } },
       { s: { r: 4, c: 1 }, e: { r: 4, c: 12 } },
+      { s: { r: 5, c: 1 }, e: { r: 5, c: 12 } },
       { s: { r: 2, c: 9 }, e: { r: 2, c: 12 } },
     ];
     const lastRow = rows.length;
@@ -761,9 +799,16 @@
   }
 
   function addReadWorksSheet(wb, items, baseDate) {
-    const rows = [['이름', '날짜', '점포', '웍스스케줄 원값', '읽은 조', '원본셀', '원본행', '원본열', '헤더셀', '헤더값', '휴무/제외값 여부']];
-    for (const x of items.filter(v => v.date <= baseDate)) rows.push([x.name, x.date, x.store, x.value, x.shift, x.sourceCell, x.sourceRow, x.sourceCol, x.headerCell, x.headerValue, isOffLike(x.value) || hasEducation(x.value) ? '제외값' : '근무값']);
-    addSheet(wb, '읽기 확인_웍스', rows, { widths: [12, 12, 16, 18, 10, 10, 8, 8, 10, 12, 16] });
+    const rows = [['이름', '날짜', '점포', '웍스스케줄 원값', '순환여부', '적용기준', '적용 조', '매장계획 원값', '매장계획 조', '읽은 조', '원본셀', '원본행', '원본열', '헤더셀', '헤더값', '휴무/제외값 여부']];
+    for (const x of items.filter(v => v.date <= baseDate)) rows.push([
+      x.name, x.date, x.store, x.value,
+      hasRotation(x.value) ? '순환' : '',
+      x.appliedBasis || (hasEducation(x.value) ? '교육 제외' : hasRotation(x.value) ? '순환→매장계획 기준' : isOffLike(x.value) ? '휴무/제외' : '웍스 기준'),
+      x.appliedShift || '', x.planValue || '', x.planShift || '', x.shift,
+      x.sourceCell, x.sourceRow, x.sourceCol, x.headerCell, x.headerValue,
+      isOffLike(x.value) || hasEducation(x.value) ? '제외값' : '근무값'
+    ]);
+    addSheet(wb, '읽기 확인_웍스', rows, { widths: [12, 12, 16, 18, 10, 18, 10, 18, 10, 10, 10, 8, 8, 10, 12, 16] });
   }
 
   function addReadPlanSheet(wb, items, baseDate) {
@@ -782,7 +827,7 @@
       ['근태 미입력', '근무 예정이나 출근 기록 없음', '1회당 -3점'],
       ['퇴근 미입력', '출근은 있으나 정상 퇴근시간 없음', '3회부터 -1점, 이후 1회 추가마다 -1점'],
       ['MX 기본 기준', '웍스스케줄 A/B/C조 기준', '영업시간DB의 점포별 조 시간 사용'],
-      ['MX 순환 기준', '웍스스케줄에 “순환” 포함', '매장근무계획관리의 근무A/B/C 기준 사용'],
+      ['MX 순환 기준', '웍스스케줄 값 어디든 “순환” 글자 포함', '매장근무계획관리의 근무A/B/C 기준 사용'],
       ['제외 기준', '휴무/대체휴무/보상휴가/연차/공가/DIDA/예비군/교육', '근태 미입력 감점 제외'],
       ['CE 기준', '매장근무계획관리에 “근무” 포함, 단 휴무성 문구 제외', '출근 여부만 확인'],
       ['소명 처리', '소명처리 시트에서 처리결과 또는 처리사유에 입력해도 적용됨. 적용여부는 공란 가능', '정시인정/출근인정/퇴근인정/교육제외/기타제외 또는 인정/제외/정시 포함 문구 시 최종요약에서 제외. 적용여부=미적용이면 제외 안 함'],
