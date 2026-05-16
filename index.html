@@ -3,50 +3,74 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>근태 자동 분석기</title>
+  <title>근태 관리 시스템</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <main class="wrap">
     <section class="hero">
-      <div>
-        <p class="eyebrow">Costco Samsung Attendance Checker</p>
-        <h1>근태 자동 분석기</h1>
-        <p class="desc">엑셀 4개를 업로드하면 MX/CE를 분리해 지각, 근태 미입력, 퇴근 미입력, 스케줄 불일치를 자동 판정하고 결과 엑셀을 생성합니다.</p>
+      <div class="hero-copy">
+        <p class="eyebrow">Costco Samsung Attendance System</p>
+        <h1>근태 관리 자동 분석기</h1>
+        <p class="desc">엑셀 4개를 업로드하면 MX/CE 근태를 자동 판정하고, 소명 반영이 가능한 보고용 결과 파일을 생성합니다.</p>
+        <div class="chips">
+          <span>MX 지각/근태/퇴근미입력</span>
+          <span>CE 근태미입력</span>
+          <span>소명 자동반영</span>
+        </div>
       </div>
-      <div class="badge">수정판 v4</div>
+      <div class="version-card">
+        <strong>v6</strong>
+        <span>보고용 시트 정리</span>
+      </div>
     </section>
 
-    <section class="card grid">
-      <label class="upload">
-        <span>1. 인력 및 점포별 근무시간.xlsx</span>
-        <input id="fileMaster" type="file" accept=".xlsx,.xls" />
-      </label>
-      <label class="upload">
-        <span>2. 매장근무계획관리.xlsx</span>
-        <input id="filePlan" type="file" accept=".xlsx,.xls" />
-      </label>
-      <label class="upload">
-        <span>3. 웍스스케줄.xlsx</span>
-        <input id="fileWorks" type="file" accept=".xlsx,.xls" />
-      </label>
-      <label class="upload">
-        <span>4. 근태관리.xlsx</span>
-        <input id="fileAttendance" type="file" accept=".xlsx,.xls" />
-      </label>
+    <section class="panel">
+      <div class="section-head">
+        <p>STEP 1</p>
+        <h2>분석 파일 업로드</h2>
+      </div>
+      <div class="upload-grid">
+        <label class="upload">
+          <b>01</b>
+          <span>인력 및 점포별 근무시간.xlsx</span>
+          <input id="fileMaster" type="file" accept=".xlsx,.xls" />
+        </label>
+        <label class="upload">
+          <b>02</b>
+          <span>매장근무계획관리.xlsx</span>
+          <input id="filePlan" type="file" accept=".xlsx,.xls" />
+        </label>
+        <label class="upload">
+          <b>03</b>
+          <span>웍스스케줄.xlsx</span>
+          <input id="fileWorks" type="file" accept=".xlsx,.xls" />
+        </label>
+        <label class="upload">
+          <b>04</b>
+          <span>근태관리.xlsx</span>
+          <input id="fileAttendance" type="file" accept=".xlsx,.xls" />
+        </label>
+      </div>
     </section>
 
-    <section class="card options">
-      <div>
-        <label for="monthInput">분석 월</label>
-        <input id="monthInput" type="month" />
-        <small>비워두면 근태관리/웍스스케줄 날짜에서 자동 추정합니다.</small>
+    <section class="panel compact">
+      <div class="section-head">
+        <p>STEP 2</p>
+        <h2>선택 기준</h2>
       </div>
-      <div>
-        <label for="baseDateInput">판정 기준일</label>
-        <input id="baseDateInput" type="date" />
-        <small>비워두면 근태관리의 마지막 출근일까지만 판정합니다.</small>
+      <div class="options">
+        <div>
+          <label for="monthInput">분석 월</label>
+          <input id="monthInput" type="month" />
+          <small>비워두면 웍스스케줄/근태관리 기준으로 자동 추정합니다.</small>
+        </div>
+        <div>
+          <label for="baseDateInput">판정 기준일</label>
+          <input id="baseDateInput" type="date" />
+          <small>비워두면 근태관리의 마지막 출근일까지만 판정합니다.</small>
+        </div>
       </div>
     </section>
 
@@ -57,17 +81,24 @@
 
     <section id="status" class="status">파일 4개를 업로드한 뒤 분석을 실행하세요.</section>
 
-    <section class="card guide">
-      <h2>적용 기준</h2>
-      <ul>
-        <li>CE: 매장근무계획관리에서 “근무” 포함일에 출근 여부만 확인합니다.</li>
-        <li>MX: 기본은 웍스스케줄의 A/B/C조 기준으로 지각을 판정합니다. 휴무/대체휴무/보상휴가/연차/공가/DIDA/예비군은 근태 미입력 감점에서 제외합니다.</li>
-        <li>웍스스케줄에 “순환” 포함 시 매장근무계획관리의 근무A/B/C 기준을 사용합니다.</li>
-        <li>웍스스케줄에 “교육” 포함 시 지각/근태 미입력 판정에서 제외합니다.</li>
-        <li>출근 기준시간과 같은 시간에 찍혀도 지각으로 판정합니다.</li>
-        <li>소명처리 시트에서 처리결과 또는 처리사유에 정시인정/출근인정/퇴근인정/교육제외/기타제외를 입력하면 최종요약 수식에 반영됩니다. 적용여부는 비워도 됩니다.</li>
-        <li>읽기확인_웍스 시트에서 프로그램이 웍스스케줄을 어떤 날짜/조/원본셀로 읽었는지 바로 확인할 수 있습니다.</li>
-      </ul>
+    <section class="panel guide">
+      <div class="section-head">
+        <p>OUTPUT</p>
+        <h2>생성 시트</h2>
+      </div>
+      <div class="sheet-list">
+        <span>사용방법_판정기준</span>
+        <span>CE_근태미입력</span>
+        <span>MX_최종요약</span>
+        <span>MX_지각</span>
+        <span>MX_근태미입력</span>
+        <span>MX_퇴근미입력</span>
+        <span>MX_소명처리</span>
+        <span>읽기 확인_웍스</span>
+        <span>읽기 확인_매장계획</span>
+        <span>스케줄 불일치</span>
+      </div>
+      <p class="note">소명은 <b>MX_소명처리</b> 시트의 <b>처리결과</b> 칸에 정시인정/출근인정/퇴근인정/교육제외/기타제외처럼 입력하면 MX_최종요약에 자동 반영됩니다.</p>
     </section>
   </main>
 

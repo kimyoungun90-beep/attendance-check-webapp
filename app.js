@@ -520,7 +520,7 @@
     if (kind === '지각') { judgement = `${row.actualTime} 출근 / ${row.lateMinutes}분 지각`; lateType = row.lateType; lateMinutes = row.lateMinutes; baseScore = row.rawScore; }
     else if (kind === '근태미입력') { judgement = row.reason; baseScore = -3; }
     else if (kind === '퇴근미입력') { judgement = row.reason; baseScore = 0; }
-    return { apply: '', kind, name: row.name, date: row.date, autoJudgement: judgement, lateType, lateMinutes, baseScore, result: '', excludeFormula: '', reason: '', approver: '', memo: '' };
+    return { group: row.group || '', apply: '', kind, name: row.name, date: row.date, autoJudgement: judgement, lateType, lateMinutes, baseScore, result: '', excludeFormula: '', reason: '', approver: '', memo: '' };
   }
 
   function buildSummary(people, lateRows, noAttendanceRows, noCheckoutRows) {
@@ -552,61 +552,123 @@
   function makeWorkbook(result) {
     const wb = XLSX.utils.book_new();
     wb.Workbook = { Views: [{ RTL: false }], CalcPr: { calcMode: 'auto' } };
-    addSheet(wb, '사용방법', [
-      ['근태 자동 분석 결과 사용방법'],
-      ['1', '자동판정 시트에서 원본 판정 내역을 확인합니다.'],
-      ['2', '소명처리 시트에서 처리결과 또는 처리사유에 정시인정/출근인정/퇴근인정/교육제외/기타제외를 입력하면 제외됩니다. 적용여부는 비워도 됩니다. 단, 적용여부에 미적용을 쓰면 제외되지 않습니다.'],
-      ['3', '최종요약은 소명처리의 처리결과/최종제외를 기준으로 감점이 다시 계산됩니다. 입력 후 값이 안 바뀌면 F9 또는 Ctrl+Alt+F9로 재계산하세요.'],
-      ['4', '읽기확인_웍스 시트에서 프로그램이 웍스스케줄을 실제로 어떤 날짜/조/원본셀로 읽었는지 확인할 수 있습니다.'],
-      ['5', '휴무/대체휴무/보상휴가/연차/공가/DIDA/예비군/교육은 근태 미입력 감점에서 제외됩니다.'],
-      ['분석월', `${result.year}-${String(result.month).padStart(2, '0')}`],
-      ['판정기준일', result.baseDate],
-    ], { title: true, widths: [12, 120] });
 
-    addSummarySheet(wb, '자동요약', result.autoSummary);
-    addSummarySheet(wb, 'MX_자동요약', result.autoSummary.filter(x => x.group === 'MX'));
-    addSummarySheet(wb, 'CE_자동요약', result.autoSummary.filter(x => x.group === 'CE'));
-    addFinalSummarySheet(wb, result, '최종요약', result.autoSummary);
-    addFinalSummarySheet(wb, result, 'MX_최종요약', result.autoSummary.filter(x => x.group === 'MX'));
-    addFinalSummarySheet(wb, result, 'CE_최종요약', result.autoSummary.filter(x => x.group === 'CE'));
-    addLateSheet(wb, result.lateRows, '자동판정_지각');
-    addLateSheet(wb, result.lateRows.filter(x => x.group === 'MX'), 'MX_자동판정_지각');
-    addNoAttendanceSheet(wb, result.noAttendanceRows, '자동판정_근태미입력');
-    addNoAttendanceSheet(wb, result.noAttendanceRows.filter(x => x.group === 'MX'), 'MX_근태미입력');
+    // 요청 시트만 생성: 사용방법+판정기준 / CE 근태 / MX 요약·상세·소명 / 읽기확인 / 스케줄불일치
+    addGuideRuleSheet(wb, result);
     addNoAttendanceSheet(wb, result.noAttendanceRows.filter(x => x.group === 'CE'), 'CE_근태미입력');
-    addNoCheckoutSheet(wb, result.noCheckoutRows, '자동판정_퇴근미입력');
-    addMismatchSheet(wb, result.mismatchRows);
-    addCeSheet(wb, result.ceRows);
-    addExceptionSheet(wb, result.exceptionRows);
+    addMxFinalSummarySheet(wb, result);
+    addLateSheet(wb, result.lateRows.filter(x => x.group === 'MX'), 'MX_지각');
+    addNoAttendanceSheet(wb, result.noAttendanceRows.filter(x => x.group === 'MX'), 'MX_근태미입력');
+    addNoCheckoutSheet(wb, result.noCheckoutRows.filter(x => x.group === 'MX'), 'MX_퇴근미입력');
+    addMxExceptionSheet(wb, result.exceptionRows.filter(x => x.group === 'MX'));
     addReadWorksSheet(wb, result.worksReadRows, result.baseDate);
     addReadPlanSheet(wb, result.planReadRows, result.baseDate);
-    addRuleSheet(wb);
-    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v4.xlsx`;
+    addMismatchSheet(wb, result.mismatchRows);
+
+    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v6.xlsx`;
     XLSX.writeFile(wb, fileName, { bookType: 'xlsx', cellStyles: true });
   }
 
-  function headerStyle() { return { fill: { fgColor: { rgb: '1F4ED8' } }, font: { color: { rgb: 'FFFFFF' }, bold: true }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: thinBorder() }; }
-  function thinBorder() { return { top: { style: 'thin', color: { rgb: 'D9E0EA' } }, bottom: { style: 'thin', color: { rgb: 'D9E0EA' } }, left: { style: 'thin', color: { rgb: 'D9E0EA' } }, right: { style: 'thin', color: { rgb: 'D9E0EA' } } }; }
+  function thinBorder(color = 'D8DEE9') { return { top: { style: 'thin', color: { rgb: color } }, bottom: { style: 'thin', color: { rgb: color } }, left: { style: 'thin', color: { rgb: color } }, right: { style: 'thin', color: { rgb: color } } }; }
+  function headerStyle() { return { fill: { fgColor: { rgb: '12355B' } }, font: { color: { rgb: 'FFFFFF' }, bold: true, sz: 11 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: thinBorder('12355B') }; }
+  function bodyStyle(rowIndex) { return { fill: { fgColor: { rgb: rowIndex % 2 === 0 ? 'FFFFFF' : 'F7FAFC' } }, font: { color: { rgb: '1F2937' }, sz: 10 }, alignment: { vertical: 'center', wrapText: true }, border: thinBorder() }; }
+  function titleStyle() { return { fill: { fgColor: { rgb: '0B1F33' } }, font: { color: { rgb: 'FFFFFF' }, bold: true, sz: 16 }, alignment: { horizontal: 'left', vertical: 'center' } }; }
+  function subTitleStyle() { return { fill: { fgColor: { rgb: 'EAF2FF' } }, font: { color: { rgb: '12355B' }, bold: true, sz: 11 }, alignment: { horizontal: 'left', vertical: 'center' }, border: thinBorder('BFD7F5') }; }
 
   function addSheet(wb, name, rows, options = {}) {
     const safeRows = rows.length ? rows : [['내용 없음']];
     const ws = XLSX.utils.aoa_to_sheet(safeRows);
     const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+    const headerRow = options.headerRow ?? 0;
+    const titleRows = new Set(options.titleRows || []);
+    const subtitleRows = new Set(options.subtitleRows || []);
     for (let R = range.s.r; R <= range.e.r; R++) {
       for (let C = range.s.c; C <= range.e.c; C++) {
         const addr = XLSX.utils.encode_cell({ r: R, c: C });
         if (!ws[addr]) continue;
-        ws[addr].s = ws[addr].s || {};
-        ws[addr].s.border = thinBorder();
-        ws[addr].s.alignment = { vertical: 'center', wrapText: true };
-        if (R === 0 || (options.title && R === 0)) ws[addr].s = headerStyle();
+        ws[addr].s = bodyStyle(R);
+        if (titleRows.has(R)) ws[addr].s = titleStyle();
+        else if (subtitleRows.has(R)) ws[addr].s = subTitleStyle();
+        else if (R === headerRow) ws[addr].s = headerStyle();
       }
     }
     ws['!cols'] = (options.widths || safeRows[0]?.map(() => 16) || [16]).map(wch => ({ wch }));
-    ws['!freeze'] = { xSplit: 0, ySplit: 1 };
-    ws['!autofilter'] = { ref: ws['!ref'] || 'A1:A1' };
+    ws['!rows'] = safeRows.map((_, i) => ({ hpt: titleRows.has(i) ? 28 : subtitleRows.has(i) ? 22 : i === headerRow ? 24 : 20 }));
+    ws['!freeze'] = { xSplit: 0, ySplit: headerRow + 1 };
+    if (options.autofilter !== false) {
+      const refRange = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+      const filterRef = XLSX.utils.encode_range({ s: { r: headerRow, c: refRange.s.c }, e: { r: refRange.e.r, c: refRange.e.c } });
+      ws['!autofilter'] = { ref: filterRef };
+    }
     XLSX.utils.book_append_sheet(wb, ws, name);
     return ws;
+  }
+
+  function addGuideRuleSheet(wb, result) {
+    const rows = [
+      ['근태 자동 분석 결과 사용방법 & 판정기준', '', ''],
+      ['분석월', `${result.year}-${String(result.month).padStart(2, '0')}`, ''],
+      ['판정기준일', result.baseDate, '근태관리 파일의 마지막 출근일 기준. 직접 입력한 기준일이 있으면 해당 기준 사용'],
+      ['', '', ''],
+      ['구분', '기준', '감점/처리'],
+      ['업로드 파일', '인력 및 점포별 근무시간 / 매장근무계획관리 / 웍스스케줄 / 근태관리', '엑셀 4개 업로드 후 분석 실행'],
+      ['CE 기준', '매장근무계획관리에서 “근무” 포함일만 확인', '출근기록 없으면 CE_근태미입력에 표시'],
+      ['MX 기본 기준', '웍스스케줄 A/B/C조 기준', '영업시간DB의 점포별 조 시간 사용'],
+      ['MX 순환 기준', '웍스스케줄에 “순환” 포함', '매장근무계획관리의 근무A/B/C 기준 사용'],
+      ['교육 기준', '웍스스케줄에 “교육” 포함', '지각/근태미입력 판정 제외'],
+      ['제외 기준', '휴무/휴일/연차/휴가/공가/대체/보상/DIDA/예비군/병가/경조', '근태미입력 감점 제외'],
+      ['지각 판정', '기준시간과 같은 시간에 출근 찍어도 지각', '예: 10:00 기준 / 10:00 출근 = 지각 0분'],
+      ['10분 이내 지각', '전체 지각 횟수가 3회 이상일 때만 감점', '1회당 -1점'],
+      ['11~59분 지각', '횟수 상관없이 감점', '1회당 -1점'],
+      ['60분 이상 지각', '횟수 상관없이 감점', '1회당 -2점'],
+      ['근태 미입력', '근무 예정이나 출근 기록 없음', '1회당 -3점'],
+      ['퇴근 미입력', '출근은 있으나 정상 퇴근시간 없음', '3회부터 -1점, 이후 1회 추가마다 -1점'],
+      ['소명 처리', 'MX_소명처리 시트의 처리결과 칸에 정시인정/출근인정/퇴근인정/교육제외/기타제외 입력', 'MX_최종요약에 자동 반영. “인정/제외/정시” 문구가 있으면 제외 처리'],
+      ['확인 시트', '읽기 확인_웍스 / 읽기 확인_매장계획', '프로그램이 실제로 읽은 원본셀과 값 확인 가능'],
+    ];
+    const ws = addSheet(wb, '사용방법_판정기준', rows, { widths: [18, 62, 62], titleRows: [0], subtitleRows: [4], headerRow: 4, autofilter: false });
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
+  }
+
+  function mxExclusionCountFormula(kind, nameCell, extraCriteria = []) {
+    const base = [`'MX_소명처리'!$A:$A,"${kind}"`, `'MX_소명처리'!$B:$B,${nameCell}`, `'MX_소명처리'!$K:$K,"제외"`];
+    return `COUNTIFS(${base.concat(extraCriteria).join(',')})`;
+  }
+
+  function addMxFinalSummarySheet(wb, result) {
+    const mxPeople = result.people.filter(p => p.group === 'MX');
+    const rows = [['구분', '이름', '점포', '10분 이내 지각', '11~59분 지각', '60분 이상 지각', '지각 총횟수', '지각감점', '근태미입력', '근태감점', '퇴근미입력', '퇴근감점', '총감점']];
+    for (const p of mxPeople) rows.push([p.group, p.name, p.store, '', '', '', '', '', '', '', '', '', '']);
+    const ws = addSheet(wb, 'MX_최종요약', rows, { widths: [8, 13, 16, 14, 14, 14, 12, 10, 12, 10, 12, 10, 10] });
+    for (let r = 2; r <= rows.length; r++) {
+      ws[`D${r}`] = { t: 'n', f: `MAX(0,COUNTIFS('MX_지각'!$B:$B,$B${r},'MX_지각'!$J:$J,"10분 이내")-${mxExclusionCountFormula('지각', `$B${r}`, [`'MX_소명처리'!$E:$E,"10분 이내"`])})` };
+      ws[`E${r}`] = { t: 'n', f: `MAX(0,COUNTIFS('MX_지각'!$B:$B,$B${r},'MX_지각'!$J:$J,"11~59분")-${mxExclusionCountFormula('지각', `$B${r}`, [`'MX_소명처리'!$E:$E,"11~59분"`])})` };
+      ws[`F${r}`] = { t: 'n', f: `MAX(0,COUNTIFS('MX_지각'!$B:$B,$B${r},'MX_지각'!$J:$J,"60분 이상")-${mxExclusionCountFormula('지각', `$B${r}`, [`'MX_소명처리'!$E:$E,"60분 이상"`])})` };
+      ws[`G${r}`] = { t: 'n', f: `SUM(D${r}:F${r})` };
+      ws[`H${r}`] = { t: 'n', f: `IF(G${r}>=3,-D${r},0)-E${r}-F${r}*2` };
+      ws[`I${r}`] = { t: 'n', f: `MAX(0,COUNTIFS('MX_근태미입력'!$B:$B,$B${r})-${mxExclusionCountFormula('근태미입력', `$B${r}`)})` };
+      ws[`J${r}`] = { t: 'n', f: `-I${r}*3` };
+      ws[`K${r}`] = { t: 'n', f: `MAX(0,COUNTIFS('MX_퇴근미입력'!$B:$B,$B${r})-${mxExclusionCountFormula('퇴근미입력', `$B${r}`)})` };
+      ws[`L${r}`] = { t: 'n', f: `IF(K${r}>=3,-(K${r}-2),0)` };
+      ws[`M${r}`] = { t: 'n', f: `H${r}+J${r}+L${r}` };
+    }
+    [8, 10, 12, 13].forEach(c => colorNegative(ws, rows.length, c));
+    for (let r = 2; r <= rows.length; r++) {
+      const total = `M${r}`;
+      ws[total].s = ws[total].s || {};
+      ws[total].s.fill = { fgColor: { rgb: 'FFF4E6' } };
+      ws[total].s.font = { color: { rgb: 'C92A2A' }, bold: true };
+    }
+  }
+
+  function addMxExceptionSheet(wb, items) {
+    const rows = [['구분', '이름', '날짜', '자동판정', '지각구분', '지각분', '기본감점', '처리결과', '처리사유', '승인자', '최종제외', '비고']];
+    for (const x of items) rows.push([x.kind, x.name, x.date, x.autoJudgement, x.lateType, x.lateMinutes, x.baseScore, x.result, x.reason, x.approver, '', x.memo]);
+    const ws = addSheet(wb, 'MX_소명처리', rows, { widths: [12, 13, 12, 36, 12, 8, 10, 18, 38, 12, 10, 28] });
+    for (let r = 2; r <= rows.length; r++) {
+      // 처리결과만 입력해도 적용. 처리결과/처리사유/승인자/비고 중 인정·제외·정시 문구가 있으면 제외.
+      ws[`K${r}`] = { t: 's', f: `IF(OR(ISNUMBER(SEARCH("인정",$H${r}&$I${r}&$J${r}&$L${r})),ISNUMBER(SEARCH("제외",$H${r}&$I${r}&$J${r}&$L${r})),ISNUMBER(SEARCH("정시",$H${r}&$I${r}&$J${r}&$L${r}))),"제외","반영")` };
+    }
   }
 
   function addSummarySheet(wb, name, summaryRows) {
@@ -662,7 +724,7 @@
   function addMismatchSheet(wb, items) {
     const rows = [['이름', '날짜', '점포', '매장근무계획상', '웍스스케줄상', '내용']];
     for (const x of items) rows.push([x.name, x.date, x.store, x.plan, x.works, x.note]);
-    addSheet(wb, '스케줄불일치', rows, { widths: [12, 12, 16, 18, 18, 55] });
+    addSheet(wb, '스케줄 불일치', rows, { widths: [12, 12, 16, 18, 18, 55] });
   }
   function addCeSheet(wb, items) {
     const rows = [['구분', '이름', '날짜', '점포', '매장근무계획', '출근확인']];
@@ -683,13 +745,13 @@
   function addReadWorksSheet(wb, items, baseDate) {
     const rows = [['이름', '날짜', '점포', '웍스스케줄 원값', '읽은 조', '원본셀', '원본행', '원본열', '헤더셀', '헤더값', '휴무/제외값 여부']];
     for (const x of items.filter(v => v.date <= baseDate)) rows.push([x.name, x.date, x.store, x.value, x.shift, x.sourceCell, x.sourceRow, x.sourceCol, x.headerCell, x.headerValue, isOffLike(x.value) || hasEducation(x.value) ? '제외값' : '근무값']);
-    addSheet(wb, '읽기확인_웍스', rows, { widths: [12, 12, 16, 18, 10, 10, 8, 8, 10, 12, 16] });
+    addSheet(wb, '읽기 확인_웍스', rows, { widths: [12, 12, 16, 18, 10, 10, 8, 8, 10, 12, 16] });
   }
 
   function addReadPlanSheet(wb, items, baseDate) {
     const rows = [['이름', '날짜', '점포', '매장근무계획 원값', '읽은 조', '원본셀', '원본행', '원본열', '휴무/제외값 여부']];
     for (const x of items.filter(v => v.date <= baseDate)) rows.push([x.name, x.date, x.store, x.value, x.shift, x.sourceCell, x.sourceRow, x.sourceCol, isOffLike(x.value) ? '제외값' : '근무값']);
-    addSheet(wb, '읽기확인_매장계획', rows, { widths: [12, 12, 16, 18, 10, 10, 8, 8, 16] });
+    addSheet(wb, '읽기 확인_매장계획', rows, { widths: [12, 12, 16, 18, 10, 10, 8, 8, 16] });
   }
 
   function addRuleSheet(wb) {
