@@ -553,27 +553,27 @@
     const wb = XLSX.utils.book_new();
     wb.Workbook = { Views: [{ RTL: false }], CalcPr: { calcMode: 'auto' } };
 
-    // 요청 시트만 생성: 사용방법+판정기준 / CE 근태 / MX 요약·상세·소명 / 읽기확인 / 스케줄불일치
-    addGuideRuleSheet(wb, result);
-    addNoAttendanceSheet(wb, result.noAttendanceRows.filter(x => x.group === 'CE'), 'CE_근태미입력');
+    // 요청 시트만 생성합니다. 보고용 파일이 너무 길어지지 않도록 사용방법/자동요약/기타 보조시트는 제외합니다.
+    addNoAttendanceSheet(wb, result.noAttendanceRows.filter(x => x.group === 'CE'), 'CE 근태 미입력');
     addMxFinalSummarySheet(wb, result);
-    addLateSheet(wb, result.lateRows.filter(x => x.group === 'MX'), 'MX_지각');
-    addNoAttendanceSheet(wb, result.noAttendanceRows.filter(x => x.group === 'MX'), 'MX_근태미입력');
-    addNoCheckoutSheet(wb, result.noCheckoutRows.filter(x => x.group === 'MX'), 'MX_퇴근미입력');
+    addLateSheet(wb, result.lateRows.filter(x => x.group === 'MX'), 'MX 지각');
+    addNoAttendanceSheet(wb, result.noAttendanceRows.filter(x => x.group === 'MX'), 'MX 근태 미입력');
+    addNoCheckoutSheet(wb, result.noCheckoutRows.filter(x => x.group === 'MX'), 'MX 퇴근 미입력');
     addMxExceptionSheet(wb, result.exceptionRows.filter(x => x.group === 'MX'));
     addReadWorksSheet(wb, result.worksReadRows, result.baseDate);
     addReadPlanSheet(wb, result.planReadRows, result.baseDate);
     addMismatchSheet(wb, result.mismatchRows);
 
-    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v6.xlsx`;
+    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v7.xlsx`;
     XLSX.writeFile(wb, fileName, { bookType: 'xlsx', cellStyles: true });
   }
 
   function thinBorder(color = 'D8DEE9') { return { top: { style: 'thin', color: { rgb: color } }, bottom: { style: 'thin', color: { rgb: color } }, left: { style: 'thin', color: { rgb: color } }, right: { style: 'thin', color: { rgb: color } } }; }
-  function headerStyle() { return { fill: { fgColor: { rgb: '12355B' } }, font: { color: { rgb: 'FFFFFF' }, bold: true, sz: 11 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: thinBorder('12355B') }; }
-  function bodyStyle(rowIndex) { return { fill: { fgColor: { rgb: rowIndex % 2 === 0 ? 'FFFFFF' : 'F7FAFC' } }, font: { color: { rgb: '1F2937' }, sz: 10 }, alignment: { vertical: 'center', wrapText: true }, border: thinBorder() }; }
-  function titleStyle() { return { fill: { fgColor: { rgb: '0B1F33' } }, font: { color: { rgb: 'FFFFFF' }, bold: true, sz: 16 }, alignment: { horizontal: 'left', vertical: 'center' } }; }
-  function subTitleStyle() { return { fill: { fgColor: { rgb: 'EAF2FF' } }, font: { color: { rgb: '12355B' }, bold: true, sz: 11 }, alignment: { horizontal: 'left', vertical: 'center' }, border: thinBorder('BFD7F5') }; }
+  function headerStyle() { return { fill: { fgColor: { rgb: '163B63' } }, font: { color: { rgb: 'FFFFFF' }, bold: true, sz: 10.5 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: thinBorder('163B63') }; }
+  function bodyStyle(rowIndex) { return { fill: { fgColor: { rgb: rowIndex % 2 === 0 ? 'FFFFFF' : 'F6F8FB' } }, font: { color: { rgb: '1F2937' }, sz: 10 }, alignment: { vertical: 'center', wrapText: true }, border: thinBorder('E3E8F0') }; }
+  function titleStyle() { return { fill: { fgColor: { rgb: '071B2F' } }, font: { color: { rgb: 'FFFFFF' }, bold: true, sz: 17 }, alignment: { horizontal: 'left', vertical: 'center' } }; }
+  function subTitleStyle() { return { fill: { fgColor: { rgb: 'EAF2FF' } }, font: { color: { rgb: '163B63' }, bold: true, sz: 10.5 }, alignment: { horizontal: 'left', vertical: 'center' }, border: thinBorder('C8DBF5') }; }
+  function kpiStyle(color = 'EEF6FF') { return { fill: { fgColor: { rgb: color } }, font: { color: { rgb: '0B1F33' }, bold: true, sz: 11 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: thinBorder('BFD7F5') }; }
 
   function addSheet(wb, name, rows, options = {}) {
     const safeRows = rows.length ? rows : [['내용 없음']];
@@ -631,43 +631,61 @@
   }
 
   function mxExclusionCountFormula(kind, nameCell, extraCriteria = []) {
-    const base = [`'MX_소명처리'!$A:$A,"${kind}"`, `'MX_소명처리'!$B:$B,${nameCell}`, `'MX_소명처리'!$K:$K,"제외"`];
+    const base = [`'MX 소명처리'!$A:$A,"${kind}"`, `'MX 소명처리'!$B:$B,${nameCell}`, `'MX 소명처리'!$K:$K,"제외"`];
     return `COUNTIFS(${base.concat(extraCriteria).join(',')})`;
   }
 
   function addMxFinalSummarySheet(wb, result) {
     const mxPeople = result.people.filter(p => p.group === 'MX');
-    const rows = [['구분', '이름', '점포', '10분 이내 지각', '11~59분 지각', '60분 이상 지각', '지각 총횟수', '지각감점', '근태미입력', '근태감점', '퇴근미입력', '퇴근감점', '총감점']];
+    const startRow = 8; // 엑셀 실제 행 번호. 1~6행은 보고용 타이틀/KPI 영역, 7행은 표 헤더.
+    const rows = [
+      ['MX 근태 최종 요약', '', '', '', '', '', '', '', '', '', '', '', ''],
+      ['분석월', `${result.year}-${String(result.month).padStart(2, '0')}`, '판정기준일', result.baseDate, 'MX 인원', mxPeople.length, '소명제외', '', '총 감점', '', '', '', ''],
+      ['지각 인원', '', '근태 미입력 건수', '', '퇴근 미입력 건수', '', '확인 필요자', '', '비고', '소명은 「MX 소명처리」 입력 시 자동 반영', '', '', ''],
+      ['', '', '', '', '', '', '', '', '', '', '', '', ''],
+      ['판정기준', '10분 이내 지각은 전체 지각 3회 이상 시 감점 / 11~59분은 1회당 -1점 / 60분 이상은 1회당 -2점 / 근태 미입력은 1회당 -3점 / 퇴근 미입력은 3회부터 감점', '', '', '', '', '', '', '', '', '', '', ''],
+      ['', '', '', '', '', '', '', '', '', '', '', '', ''],
+      ['구분', '이름', '점포', '10분 이내 지각', '11~59분 지각', '60분 이상 지각', '지각 총횟수', '지각감점', '근태미입력', '근태감점', '퇴근미입력', '퇴근감점', '총감점'],
+    ];
     for (const p of mxPeople) rows.push([p.group, p.name, p.store, '', '', '', '', '', '', '', '', '', '']);
-    const ws = addSheet(wb, 'MX_최종요약', rows, { widths: [8, 13, 16, 14, 14, 14, 12, 10, 12, 10, 12, 10, 10] });
-    for (let r = 2; r <= rows.length; r++) {
-      ws[`D${r}`] = { t: 'n', f: `MAX(0,COUNTIFS('MX_지각'!$B:$B,$B${r},'MX_지각'!$J:$J,"10분 이내")-${mxExclusionCountFormula('지각', `$B${r}`, [`'MX_소명처리'!$E:$E,"10분 이내"`])})` };
-      ws[`E${r}`] = { t: 'n', f: `MAX(0,COUNTIFS('MX_지각'!$B:$B,$B${r},'MX_지각'!$J:$J,"11~59분")-${mxExclusionCountFormula('지각', `$B${r}`, [`'MX_소명처리'!$E:$E,"11~59분"`])})` };
-      ws[`F${r}`] = { t: 'n', f: `MAX(0,COUNTIFS('MX_지각'!$B:$B,$B${r},'MX_지각'!$J:$J,"60분 이상")-${mxExclusionCountFormula('지각', `$B${r}`, [`'MX_소명처리'!$E:$E,"60분 이상"`])})` };
-      ws[`G${r}`] = { t: 'n', f: `SUM(D${r}:F${r})` };
-      ws[`H${r}`] = { t: 'n', f: `IF(G${r}>=3,-D${r},0)-E${r}-F${r}*2` };
-      ws[`I${r}`] = { t: 'n', f: `MAX(0,COUNTIFS('MX_근태미입력'!$B:$B,$B${r})-${mxExclusionCountFormula('근태미입력', `$B${r}`)})` };
-      ws[`J${r}`] = { t: 'n', f: `-I${r}*3` };
-      ws[`K${r}`] = { t: 'n', f: `MAX(0,COUNTIFS('MX_퇴근미입력'!$B:$B,$B${r})-${mxExclusionCountFormula('퇴근미입력', `$B${r}`)})` };
-      ws[`L${r}`] = { t: 'n', f: `IF(K${r}>=3,-(K${r}-2),0)` };
-      ws[`M${r}`] = { t: 'n', f: `H${r}+J${r}+L${r}` };
+    const ws = addSheet(wb, 'MX 최종 요약', rows, { widths: [8, 13, 16, 14, 14, 14, 12, 10, 12, 10, 12, 10, 10], titleRows: [0], subtitleRows: [1, 2, 4], headerRow: 6, autofilter: true });
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 12 } },
+      { s: { r: 4, c: 1 }, e: { r: 4, c: 12 } },
+      { s: { r: 2, c: 9 }, e: { r: 2, c: 12 } },
+    ];
+    const lastRow = rows.length;
+    const dataRange = `${startRow}:${lastRow}`;
+    ws['H2'] = { t: 'n', f: `COUNTIF('MX 소명처리'!$K:$K,"제외")`, s: kpiStyle('E8F5E9') };
+    ws['J2'] = { t: 'n', f: `SUM(M${startRow}:M${lastRow})`, s: kpiStyle('FFF4E6') };
+    ws['B3'] = { t: 'n', f: `COUNTIF(G${startRow}:G${lastRow},">0")`, s: kpiStyle('EEF6FF') };
+    ws['D3'] = { t: 'n', f: `SUM(I${startRow}:I${lastRow})`, s: kpiStyle('FFF4E6') };
+    ws['F3'] = { t: 'n', f: `SUM(K${startRow}:K${lastRow})`, s: kpiStyle('FFF4E6') };
+    ws['H3'] = { t: 'n', f: `COUNTIF(M${startRow}:M${lastRow},"<0")`, s: kpiStyle('FFECEC') };
+
+    for (let r = startRow; r <= rows.length; r++) {
+      const formulaStyle = bodyStyle(r);
+      ws[`D${r}`] = { t: 'n', f: `MAX(0,COUNTIFS('MX 지각'!$B:$B,$B${r},'MX 지각'!$J:$J,"10분 이내")-${mxExclusionCountFormula('지각', `$B${r}`, [`'MX 소명처리'!$E:$E,"10분 이내"`])})`, s: formulaStyle };
+      ws[`E${r}`] = { t: 'n', f: `MAX(0,COUNTIFS('MX 지각'!$B:$B,$B${r},'MX 지각'!$J:$J,"11~59분")-${mxExclusionCountFormula('지각', `$B${r}`, [`'MX 소명처리'!$E:$E,"11~59분"`])})`, s: formulaStyle };
+      ws[`F${r}`] = { t: 'n', f: `MAX(0,COUNTIFS('MX 지각'!$B:$B,$B${r},'MX 지각'!$J:$J,"60분 이상")-${mxExclusionCountFormula('지각', `$B${r}`, [`'MX 소명처리'!$E:$E,"60분 이상"`])})`, s: formulaStyle };
+      ws[`G${r}`] = { t: 'n', f: `SUM(D${r}:F${r})`, s: formulaStyle };
+      ws[`H${r}`] = { t: 'n', f: `IF(G${r}>=3,-D${r},0)-E${r}-F${r}*2`, s: formulaStyle };
+      ws[`I${r}`] = { t: 'n', f: `MAX(0,COUNTIFS('MX 근태 미입력'!$B:$B,$B${r})-${mxExclusionCountFormula('근태미입력', `$B${r}`)})`, s: formulaStyle };
+      ws[`J${r}`] = { t: 'n', f: `-I${r}*3`, s: formulaStyle };
+      ws[`K${r}`] = { t: 'n', f: `MAX(0,COUNTIFS('MX 퇴근 미입력'!$B:$B,$B${r})-${mxExclusionCountFormula('퇴근미입력', `$B${r}`)})`, s: formulaStyle };
+      ws[`L${r}`] = { t: 'n', f: `IF(K${r}>=3,-(K${r}-2),0)`, s: formulaStyle };
+      ws[`M${r}`] = { t: 'n', f: `H${r}+J${r}+L${r}`, s: { ...formulaStyle, fill: { fgColor: { rgb: 'FFF4E6' } }, font: { color: { rgb: 'C92A2A' }, bold: true, sz: 10 } } };
     }
-    [8, 10, 12, 13].forEach(c => colorNegative(ws, rows.length, c));
-    for (let r = 2; r <= rows.length; r++) {
-      const total = `M${r}`;
-      ws[total].s = ws[total].s || {};
-      ws[total].s.fill = { fgColor: { rgb: 'FFF4E6' } };
-      ws[total].s.font = { color: { rgb: 'C92A2A' }, bold: true };
-    }
+    [8, 10, 12, 13].forEach(c => colorNegative(ws, rows.length, c, startRow));
   }
 
   function addMxExceptionSheet(wb, items) {
     const rows = [['구분', '이름', '날짜', '자동판정', '지각구분', '지각분', '기본감점', '처리결과', '처리사유', '승인자', '최종제외', '비고']];
     for (const x of items) rows.push([x.kind, x.name, x.date, x.autoJudgement, x.lateType, x.lateMinutes, x.baseScore, x.result, x.reason, x.approver, '', x.memo]);
-    const ws = addSheet(wb, 'MX_소명처리', rows, { widths: [12, 13, 12, 36, 12, 8, 10, 18, 38, 12, 10, 28] });
+    const ws = addSheet(wb, 'MX 소명처리', rows, { widths: [12, 13, 12, 36, 12, 8, 10, 18, 38, 12, 10, 28] });
     for (let r = 2; r <= rows.length; r++) {
       // 처리결과만 입력해도 적용. 처리결과/처리사유/승인자/비고 중 인정·제외·정시 문구가 있으면 제외.
-      ws[`K${r}`] = { t: 's', f: `IF(OR(ISNUMBER(SEARCH("인정",$H${r}&$I${r}&$J${r}&$L${r})),ISNUMBER(SEARCH("제외",$H${r}&$I${r}&$J${r}&$L${r})),ISNUMBER(SEARCH("정시",$H${r}&$I${r}&$J${r}&$L${r}))),"제외","반영")` };
+      ws[`K${r}`] = { t: 's', f: `IF(OR(ISNUMBER(SEARCH("인정",$H${r}&$I${r}&$J${r}&$L${r})),ISNUMBER(SEARCH("제외",$H${r}&$I${r}&$J${r}&$L${r})),ISNUMBER(SEARCH("정시",$H${r}&$I${r}&$J${r}&$L${r}))),"제외","반영")`, s: bodyStyle(r) };
     }
   }
 
@@ -772,12 +790,12 @@
     addSheet(wb, '판정기준', rows, { widths: [16, 55, 55] });
   }
 
-  function colorNegative(ws, rowCount, colOneBased) {
-    for (let r = 2; r <= rowCount; r++) {
+  function colorNegative(ws, rowCount, colOneBased, startRow = 2) {
+    for (let r = startRow; r <= rowCount; r++) {
       const addr = XLSX.utils.encode_cell({ r: r - 1, c: colOneBased - 1 });
       ws[addr] = ws[addr] || { t: 'n', v: 0 };
       ws[addr].s = ws[addr].s || {};
-      ws[addr].s.font = { color: { rgb: 'C92A2A' }, bold: true };
+      ws[addr].s.font = { color: { rgb: 'C92A2A' }, bold: true, sz: 10 };
     }
   }
   function escapeHtml(s) { return String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); }

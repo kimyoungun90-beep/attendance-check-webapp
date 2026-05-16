@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>근태 관리 시스템</title>
+  <title>근태 관리 자동 분석기</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -11,45 +11,50 @@
   <main class="wrap">
     <section class="hero">
       <div class="hero-copy">
-        <p class="eyebrow">Costco Samsung Attendance System</p>
-        <h1>근태 관리 자동 분석기</h1>
-        <p class="desc">엑셀 4개를 업로드하면 MX/CE 근태를 자동 판정하고, 소명 반영이 가능한 보고용 결과 파일을 생성합니다.</p>
+        <p class="eyebrow">Costco Samsung Attendance Report</p>
+        <h1>근태 관리<br />자동 분석기</h1>
+        <p class="desc">엑셀 4개만 업로드하면 CE 근태 미입력, MX 지각·근태 미입력·퇴근 미입력, 소명 반영 최종 요약까지 보고용 엑셀로 정리합니다.</p>
         <div class="chips">
-          <span>MX 지각/근태/퇴근미입력</span>
-          <span>CE 근태미입력</span>
-          <span>소명 자동반영</span>
+          <span>보고용 MX 최종 요약</span>
+          <span>소명 자동 반영</span>
+          <span>웍스/매장계획 읽기 확인</span>
         </div>
       </div>
-      <div class="version-card">
-        <strong>v6</strong>
-        <span>보고용 시트 정리</span>
-      </div>
+      <aside class="version-card">
+        <span class="version-label">CURRENT</span>
+        <strong>v7</strong>
+        <small>시트 축소 · 디자인 개선</small>
+      </aside>
     </section>
 
-    <section class="panel">
+    <section class="panel upload-panel">
       <div class="section-head">
-        <p>STEP 1</p>
+        <p>STEP 01</p>
         <h2>분석 파일 업로드</h2>
       </div>
       <div class="upload-grid">
         <label class="upload">
           <b>01</b>
           <span>인력 및 점포별 근무시간.xlsx</span>
+          <small>인력DB / 영업시간DB 기준</small>
           <input id="fileMaster" type="file" accept=".xlsx,.xls" />
         </label>
         <label class="upload">
           <b>02</b>
           <span>매장근무계획관리.xlsx</span>
+          <small>CE 근태 확인 / 순환 근무 기준</small>
           <input id="filePlan" type="file" accept=".xlsx,.xls" />
         </label>
         <label class="upload">
           <b>03</b>
           <span>웍스스케줄.xlsx</span>
+          <small>MX A/B/C조 및 휴무 기준</small>
           <input id="fileWorks" type="file" accept=".xlsx,.xls" />
         </label>
         <label class="upload">
           <b>04</b>
           <span>근태관리.xlsx</span>
+          <small>출근·퇴근 기록 기준</small>
           <input id="fileAttendance" type="file" accept=".xlsx,.xls" />
         </label>
       </div>
@@ -57,19 +62,19 @@
 
     <section class="panel compact">
       <div class="section-head">
-        <p>STEP 2</p>
-        <h2>선택 기준</h2>
+        <p>STEP 02</p>
+        <h2>분석 기준 선택</h2>
       </div>
       <div class="options">
-        <div>
+        <div class="field-card">
           <label for="monthInput">분석 월</label>
           <input id="monthInput" type="month" />
-          <small>비워두면 웍스스케줄/근태관리 기준으로 자동 추정합니다.</small>
+          <small>비워두면 웍스스케줄 날짜 헤더 기준으로 자동 추정합니다.</small>
         </div>
-        <div>
+        <div class="field-card">
           <label for="baseDateInput">판정 기준일</label>
           <input id="baseDateInput" type="date" />
-          <small>비워두면 근태관리의 마지막 출근일까지만 판정합니다.</small>
+          <small>비워두면 근태관리 파일의 마지막 근무일까지만 판정합니다.</small>
         </div>
       </div>
     </section>
@@ -84,21 +89,20 @@
     <section class="panel guide">
       <div class="section-head">
         <p>OUTPUT</p>
-        <h2>생성 시트</h2>
+        <h2>생성되는 시트</h2>
       </div>
       <div class="sheet-list">
-        <span>사용방법_판정기준</span>
-        <span>CE_근태미입력</span>
-        <span>MX_최종요약</span>
-        <span>MX_지각</span>
-        <span>MX_근태미입력</span>
-        <span>MX_퇴근미입력</span>
-        <span>MX_소명처리</span>
+        <span>CE 근태 미입력</span>
+        <span>MX 최종 요약</span>
+        <span>MX 지각</span>
+        <span>MX 근태 미입력</span>
+        <span>MX 퇴근 미입력</span>
+        <span>MX 소명처리</span>
         <span>읽기 확인_웍스</span>
         <span>읽기 확인_매장계획</span>
         <span>스케줄 불일치</span>
       </div>
-      <p class="note">소명은 <b>MX_소명처리</b> 시트의 <b>처리결과</b> 칸에 정시인정/출근인정/퇴근인정/교육제외/기타제외처럼 입력하면 MX_최종요약에 자동 반영됩니다.</p>
+      <p class="note"><b>MX 소명처리</b> 시트의 <b>처리결과</b> 칸에 정시인정·출근인정·퇴근인정·교육제외·기타제외처럼 입력하면 <b>MX 최종 요약</b>에 자동 반영됩니다.</p>
     </section>
   </main>
 
