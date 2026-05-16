@@ -3,32 +3,38 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>근태 관리 자동 분석기</title>
+  <title>ZENIEL 근태 관리 자동 분석기</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <main class="wrap">
+    <header class="brand-bar">
+      <div class="brand">
+        <img src="data:image/png;base64,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" alt="ZENIEL" />
+        <div>
+          <strong>Attendance Management System</strong>
+          <span>Costco Samsung · MX / CE 근태 자동 분석</span>
+        </div>
+      </div>
+      <div class="brand-badge">Local Excel Processing</div>
+    </header>
+
     <section class="hero">
       <div class="hero-copy">
-        <p class="eyebrow">Costco Samsung Attendance Report</p>
+        <p class="eyebrow">ZENIEL Workforce Report</p>
         <h1>근태 관리<br />자동 분석기</h1>
         <p class="desc">엑셀 4개만 업로드하면 CE 근태 미입력, MX 지각·근태 미입력·퇴근 미입력, 소명 반영 최종 요약까지 보고용 엑셀로 정리합니다.</p>
         <div class="hero-kpis">
-          <div><b>9</b><span>생성 시트</span></div>
+          <div><b>9</b><span>보고 시트</span></div>
           <div><b>자동</b><span>소명 반영</span></div>
           <div><b>순환</b><span>매장계획 기준</span></div>
         </div>
-        <div class="chips">
-          <span>보고용 MX 최종 요약</span>
-          <span>소명 자동 반영</span>
-          <span>웍스/매장계획 읽기 확인</span>
-        </div>
       </div>
       <aside class="version-card">
-        <span class="version-label">CURRENT</span>
-        <strong>v8</strong>
-        <small>순환 기준 강화 · 보고용 개선</small>
+        <span class="version-label">CURRENT VERSION</span>
+        <strong>v9</strong>
+        <small>제니엘 그린 디자인 · 최종요약 점수 정합성 개선</small>
       </aside>
     </section>
 
@@ -111,7 +117,7 @@
         <span>읽기 확인_매장계획</span>
         <span>스케줄 불일치</span>
       </div>
-      <p class="note"><b>MX 소명처리</b> 시트의 <b>처리결과</b> 칸에 정시인정·출근인정·퇴근인정·교육제외·기타제외처럼 입력하면 <b>MX 최종 요약</b>에 자동 반영됩니다.</p>
+      <p class="note"><b>MX 지각</b> 시트의 점수는 <b>최종요약 반영점수</b>로 표시됩니다. 10분 이내 지각은 최종 지각 총횟수 3회 미만이면 0점으로 표시되어 요약 시트와 혼동이 없게 했습니다.</p>
     </section>
   </main>
 
