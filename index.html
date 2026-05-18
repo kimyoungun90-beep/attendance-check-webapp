@@ -26,15 +26,15 @@
         <h1>근태 관리<br />자동 분석기</h1>
         <p class="desc">엑셀 4개만 업로드하면 CE/MX 근태, 매장근무계획 기준 연차 사용, 주차별 휴무 초과, MX 연차수당 지급 여부까지 보고용 엑셀로 정리합니다.</p>
         <div class="hero-kpis">
-          <div><b>11</b><span>보고 시트</span></div>
+          <div><b>DB</b><span>누적 반영</span></div>
           <div><b>자동</b><span>소명 반영</span></div>
           <div><b>순환</b><span>매장계획 기준</span></div>
         </div>
       </div>
       <aside class="version-card">
         <span class="version-label">CURRENT VERSION</span>
-        <strong>v15</strong>
-        <small>입사일 보정 + 26년 월차 수당 기준 반영</small>
+        <strong>v16</strong>
+        <small>지급기준 입력 + 연차 지급/사용 DB 누적 반영</small>
       </aside>
     </section>
 
@@ -91,6 +91,16 @@
           <input id="baseDateInput" type="date" />
           <small>비워두면 근태관리 파일의 마지막 근무일까지만 판정합니다.</small>
         </div>
+        <div class="field-card">
+          <label for="annualPayThreshold">일반 연차수당 지급 기준</label>
+          <input id="annualPayThreshold" type="number" min="0" step="0.5" placeholder="자동: 5월 8 / 6월 7 / 7월 6" />
+          <small>25년 이전 입사자 기준입니다. 차감 후 잔여가 이 기준 이상이면 당월 지급으로 계산합니다.</small>
+        </div>
+        <div class="field-card">
+          <label for="monthlyPayThreshold">26년 입사자 월차 지급 기준</label>
+          <input id="monthlyPayThreshold" type="number" min="0" step="0.5" value="1" />
+          <small>26년 입사자는 월차 발생분 기준입니다. 발생 월차 잔여가 이 기준 이상이면 지급합니다.</small>
+        </div>
       </div>
     </section>
 
@@ -115,12 +125,14 @@
         <span>MX 소명처리</span>
         <span>MX 연차 수당 확인</span>
         <span>MX 연차 사용 누적</span>
+        <span>연차수당지급DB</span>
+        <span>연차사용누적DB</span>
         <span>휴무 초과 확인</span>
         <span>읽기 확인_웍스</span>
         <span>읽기 확인_매장계획</span>
         <span>스케줄 불일치</span>
       </div>
-      <p class="note"><b>MX 연차 수당 확인</b>은 25년 이전 입사자는 잔여연차 기준, 26년 입사자는 입사일 기준 월차 발생분으로 당월 수당 지급/미지급을 표시합니다. <b>MX 연차 사용 누적</b>은 매장근무계획 기준 연차/반차 사용을 누적합니다.</p>
+      <p class="note"><b>MX 연차 수당 확인</b>은 25년 이전 입사자는 잔여연차 기준, 26년 입사자는 입사일 기준 월차 발생분으로 당월 수당 지급/미지급을 표시합니다. <b>연차수당지급DB</b>와 <b>연차사용누적DB</b>는 다음 달 인력DB에 넣어 누적 기준으로 사용할 수 있습니다.</p>
     </section>
   </main>
 
