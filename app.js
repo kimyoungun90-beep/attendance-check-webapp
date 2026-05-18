@@ -213,6 +213,20 @@
     return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: false });
   }
 
+  function optionalSheetRows(wb, preferredNames = []) {
+    const normalized = new Map(wb.SheetNames.map(name => [clean(name).replace(/\s+/g, ''), name]));
+    let sheetName = '';
+    for (const name of preferredNames) {
+      const direct = wb.SheetNames.find(sn => clean(sn) === clean(name));
+      if (direct) { sheetName = direct; break; }
+      const compact = normalized.get(clean(name).replace(/\s+/g, ''));
+      if (compact) { sheetName = compact; break; }
+    }
+    if (!sheetName) return [];
+    const ws = wb.Sheets[sheetName];
+    return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: false });
+  }
+
   async function runAnalysis() {
     try {
       const missingFiles = Object.entries(fileInputs).filter(([, el]) => !el.files || !el.files[0]).map(([key]) => key);
@@ -229,9 +243,10 @@
       const planRows = sheetRows(planWb);
       const worksRows = sheetRows(worksWb);
       const attendanceRows = sheetRows(attWb);
-      const result = analyze({ peopleRows, hourRows, planRows, worksRows, attendanceRows });
+      const annualRows = optionalSheetRows(masterWb, ['연차DB', '연차 DB', '연차관리대장']);
+      const result = analyze({ peopleRows, hourRows, planRows, worksRows, attendanceRows, annualRows });
       makeWorkbook(result);
-      setStatus(`분석 완료(v11): MX 지각 ${result.lateRows.length}건, 근태 미입력 ${result.noAttendanceRows.length}건, 퇴근 미입력 ${result.noCheckoutRows.length}건, 스케줄 불일치 ${result.mismatchRows.length}건.<br>결과 엑셀이 다운로드됩니다.`, 'ok');
+      setStatus(`분석 완료(v12): MX 지각 ${result.lateRows.length}건, 근태 미입력 ${result.noAttendanceRows.length}건, 퇴근 미입력 ${result.noCheckoutRows.length}건, 스케줄 불일치 ${result.mismatchRows.length}건.<br>결과 엑셀이 다운로드됩니다.`, 'ok');
     } catch (err) {
       console.error(err);
       setStatus(`오류가 발생했습니다.<br><b>${escapeHtml(err.message || err)}</b><br>파일 양식이나 시트명이 바뀌었는지 확인하세요.`, 'error');
@@ -271,11 +286,12 @@
     return { year: now.getFullYear(), month: now.getMonth() + 1 };
   }
 
-  function analyze({ peopleRows, hourRows, planRows, worksRows, attendanceRows }) {
+  function analyze({ peopleRows, hourRows, planRows, worksRows, attendanceRows, annualRows = [] }) {
     const { year, month } = inferYearMonth(attendanceRows, worksRows);
     const manualBaseDate = clean($('baseDateInput').value);
 
     const people = parsePeople(peopleRows);
+    const annualLeaveMap = parseAnnualLeaveDB(annualRows);
     const peopleByName = new Map(people.map(p => [p.name, p]));
     const peopleByEmp = new Map(people.filter(p => p.empNo).map(p => [p.empNo, p]));
     const workHours = parseWorkHours(hourRows);
@@ -427,6 +443,75 @@
     const restExcessRows = buildRestExcessRows(allPeople, planReadRows);
     const autoSummary = buildSummary(allPeople, lateRows, noAttendanceRows, noCheckoutRows);
     return { year, month, baseDate: baseDateKey, people: allPeople, lateRows, noAttendanceRows, noCheckoutRows, mismatchRows, ceRows, exceptionRows, autoSummary, worksReadRows, planReadRows, leaveRows, restExcessRows };
+  }
+
+
+  function numValue(value) {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    const s = clean(value).replace(/,/g, '');
+    if (!s || /#N\/A|N\/A|오류/.test(s)) return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function parseAnnualDate(value) {
+    const d = parseDate(value);
+    return d ? dateKey(d) : '';
+  }
+
+  function parseAnnualLeaveDB(rows) {
+    const map = new Map();
+    if (!rows || !rows.length) return map;
+    const h = findHeaderRow(rows, ['사원명', '총개수'], 30);
+    const header = rows[h] || [];
+    if (!header.some(v => clean(v).includes('사원명'))) return map;
+    const nameCol = findCol(header, '사원명', 6);
+    const storeCol = findCol(header, '매장', 4);
+    const empCol = findCol(header, '제니엘사번', findCol(header, '사번', 5));
+    const managerCol = findCol(header, '매니저', 3);
+    const statusCol = findCol(header, '구분 1', findCol(header, '구분1', 1));
+    const typeCol = findCol(header, '구분 2', findCol(header, '구분2', 2));
+    const joinCol = header.findIndex(v => clean(v).replace(/\s+/g, '').includes('제니엘입사일'));
+    const baseCol = findCol(header, '연차기준일', 8);
+    const generatedCol = findCol(header, '2026년 발생', findCol(header, '2026년발생', 10));
+    const monthlyCol = findCol(header, '월차', 11);
+    const totalCol = findCol(header, '총개수', 12);
+    const usedCol = header.findIndex(v => clean(v).replace(/\s+/g, '').includes('2026년사용'));
+    const paidCol = header.findIndex(v => clean(v).replace(/\s+/g, '').includes('2026년지급'));
+    const usedPaidCol = findCol(header, '사용+지급', 15);
+    const retireCol = findCol(header, '퇴직정산', 17);
+    let remainCol = header.findIndex(v => clean(v).replace(/\s+/g, '').includes('2026잔여'));
+    if (remainCol < 0) remainCol = findCol(header, '잔여', 18);
+    const memoCol = findCol(header, '비고', -1);
+
+    for (let r = h + 1; r < rows.length; r++) {
+      const row = rows[r] || [];
+      const name = normalizeName(row[nameCol]);
+      if (!name || name === '사원명') continue;
+      const rec = {
+        name,
+        store: normalizeStore(row[storeCol]),
+        empNo: clean(row[empCol]),
+        manager: clean(row[managerCol]),
+        status: clean(row[statusCol]),
+        type: clean(row[typeCol]),
+        joinDate: parseAnnualDate(row[joinCol]),
+        annualBaseDate: parseAnnualDate(row[baseCol]),
+        generated: numValue(row[generatedCol]),
+        monthly: numValue(row[monthlyCol]),
+        total: numValue(row[totalCol]),
+        used: numValue(row[usedCol]),
+        paid: numValue(row[paidCol]),
+        usedPaid: numValue(row[usedPaidCol]),
+        retire: numValue(row[retireCol]),
+        remain: numValue(row[remainCol]),
+        memo: memoCol >= 0 ? clean(row[memoCol]) : '',
+        sourceRow: r + 1,
+      };
+      map.set(name, rec);
+    }
+    return map;
   }
 
   function parsePeople(rows) {
@@ -730,6 +815,81 @@
       .sort((a, b) => a.weekStart.localeCompare(b.weekStart) || a.store.localeCompare(b.store, 'ko') || a.name.localeCompare(b.name, 'ko'));
   }
 
+
+  function getCurrentMonthLeaveUsage(leaveRows, name, year, month) {
+    const ym = `${year}-${String(month).padStart(2, '0')}`;
+    let annual = 0, half = 0, total = 0;
+    for (const row of leaveRows) {
+      if (row.name !== name || !String(row.date).startsWith(ym)) continue;
+      if (row.amount === 0.5) half += 1;
+      else annual += 1;
+      total += Number(row.amount || 0);
+    }
+    return { annual, half, total };
+  }
+
+  function buildAllowanceSchedule(adjustedRemain, month) {
+    const schedule = [];
+    let remain = Number(adjustedRemain || 0);
+    for (let m = month; m <= 12; m++) {
+      const monthsAfter = 12 - m;
+      const pay = Math.min(1, Math.max(0, remain - monthsAfter));
+      const rounded = Math.round(pay * 10) / 10;
+      schedule.push({ month: m, pay: rounded });
+      remain = Math.max(0, remain - rounded);
+    }
+    return schedule;
+  }
+
+  function buildAnnualAllowanceRows(people, annualMap, leaveRows, year, month) {
+    const rows = [];
+    const mxPeople = people.filter(p => p.group === 'MX');
+    const threshold = 13 - month; // 5월=8, 6월=7, 7월=6 ... 당월 포함 남은 지급월수
+    const afterMonths = 12 - month;
+    for (const p of mxPeople) {
+      const db = annualMap.get(p.name) || {};
+      const usage = getCurrentMonthLeaveUsage(leaveRows, p.name, year, month);
+      const remain = Number(db.remain ?? 0);
+      const adjustedRemain = Math.max(0, remain - usage.total);
+      const payThisMonth = Math.min(1, Math.max(0, adjustedRemain - afterMonths));
+      const roundedPay = Math.round(payThisMonth * 10) / 10;
+      const schedule = buildAllowanceSchedule(adjustedRemain, month);
+      const totalScheduled = Math.round(schedule.reduce((sum, x) => sum + x.pay, 0) * 10) / 10;
+      const scheduleText = schedule.filter(x => x.pay > 0).map(x => `${x.month}월 ${x.pay}`).join(' / ');
+      let status = '미지급';
+      if (roundedPay >= 1) status = '지급';
+      else if (roundedPay > 0) status = '부분지급';
+      rows.push({
+        group: p.group,
+        name: p.name,
+        store: p.store,
+        empNo: p.empNo || db.empNo || '',
+        manager: db.manager || p.manager || '',
+        type: db.type || '',
+        joinDate: db.joinDate || '',
+        annualBaseDate: db.annualBaseDate || '',
+        total: db.total,
+        used: db.used,
+        paid: db.paid,
+        remain: db.remain,
+        dbStatus: db.remain === null || db.remain === undefined ? '연차DB 없음/확인필요' : '정상',
+        monthAnnualUsed: usage.annual,
+        monthHalfUsed: usage.half,
+        monthUsedTotal: usage.total,
+        adjustedRemain,
+        threshold,
+        afterMonths,
+        payThisMonth: roundedPay,
+        payStatus: status,
+        totalScheduled,
+        usableLeave: Math.max(0, Math.round((adjustedRemain - totalScheduled) * 10) / 10),
+        scheduleText,
+        memo: db.memo || '',
+      });
+    }
+    return rows.sort((a, b) => a.store.localeCompare(b.store, 'ko') || a.name.localeCompare(b.name, 'ko'));
+  }
+
   function makeWorkbook(result) {
     const wb = XLSX.utils.book_new();
     wb.Workbook = { Views: [{ RTL: false }], CalcPr: { calcMode: 'auto' } };
@@ -741,13 +901,14 @@
     addNoAttendanceSheet(wb, result.noAttendanceRows.filter(x => x.group === 'MX'), 'MX 근태 미입력');
     addNoCheckoutSheet(wb, result.noCheckoutRows.filter(x => x.group === 'MX'), 'MX 퇴근 미입력');
     addMxExceptionSheet(wb, result.exceptionRows.filter(x => x.group === 'MX'));
-    addLeaveSheet(wb, result.leaveRows);
+    addAnnualAllowanceSheet(wb, result);
+    addMxLeaveAccumSheet(wb, result.leaveRows.filter(x => x.group === 'MX'));
     addRestExcessSheet(wb, result.restExcessRows);
     addReadWorksSheet(wb, result.worksReadRows, result.baseDate);
     addReadPlanSheet(wb, result.planReadRows, result.baseDate);
     addMismatchSheet(wb, result.mismatchRows);
 
-    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v11.xlsx`;
+    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v12.xlsx`;
     XLSX.writeFile(wb, fileName, { bookType: 'xlsx', cellStyles: true });
   }
 
@@ -955,6 +1116,56 @@
     }
   }
 
+
+
+  function addAnnualAllowanceSheet(wb, result) {
+    const rows = [
+      ['ZENIEL MX 연차 수당 지급 확인', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+      ['분석월', `${result.year}-${String(result.month).padStart(2, '0')}`, '오늘 기준', '', '당월 수당 기준', `${13 - result.month}개`, '설명', `${result.month}월은 잔여 ${13 - result.month}개 기준 / ${result.month + 1}월~12월 보전 후 남는 수량만 당월 지급`, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+      ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+      ['구분', '이름', '점포', '사번', '입사일', '연차기준일', '구분2', '총개수', '2026 사용', '2026 지급', '연차DB 잔여', '오늘', '26입사 월차생성', '분석월 연차', '분석월 반차', '분석월 차감', '차감후 잔여', '당월 기준', '당월 지급예상', '지급판정', '5~12월 예정수당', '사용가능연차', '예상 지급월', '비고'],
+    ];
+    for (const x of result.annualAllowanceRows) {
+      rows.push([
+        x.group, x.name, x.store, x.empNo, x.joinDate, x.annualBaseDate, x.type,
+        x.total ?? '', x.used ?? '', x.paid ?? '', x.remain ?? '', '', '',
+        x.monthAnnualUsed, x.monthHalfUsed, x.monthUsedTotal, x.adjustedRemain,
+        x.threshold, x.payThisMonth, x.payStatus, x.totalScheduled, x.usableLeave, x.scheduleText, x.memo || x.dbStatus,
+      ]);
+    }
+    const ws = addSheet(wb, 'MX 연차 수당 확인', rows, { widths: [8, 12, 16, 12, 12, 12, 14, 9, 10, 10, 11, 12, 15, 11, 11, 11, 11, 10, 12, 10, 13, 12, 38, 30], titleRows: [0], subtitleRows: [1], headerRow: 3, autofilter: true });
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 23 } },
+      { s: { r: 1, c: 6 }, e: { r: 1, c: 23 } },
+    ];
+    ws['D2'] = { t: 'n', f: 'TODAY()', s: kpiStyle('EAF6EF') };
+    for (let r = 5; r <= rows.length; r++) {
+      const joinCell = `E${r}`;
+      ws[`L${r}`] = { t: 'n', f: 'TODAY()', s: bodyStyle(r) };
+      ws[`M${r}`] = { t: 'n', f: `IFERROR(IF(YEAR(DATEVALUE(${joinCell}))=2026,MAX(0,DATEDIF(DATEVALUE(${joinCell}),TODAY(),"m")),0),0)`, s: bodyStyle(r) };
+      // 26년 입사자는 TODAY 기준 월차 생성 수량으로 차감후 잔여를 재계산, 그 외 인원은 연차DB 잔여 기준에서 분석월 사용분 차감
+      ws[`Q${r}`] = { t: 'n', f: `MAX(0,IFERROR(IF(YEAR(DATEVALUE(${joinCell}))=2026,M${r}-I${r}-J${r},K${r}),K${r})-P${r})`, s: { ...bodyStyle(r), fill: { fgColor: { rgb: 'FFF4E6' } }, font: { color: { rgb: '0B2F22' }, bold: true, sz: 10 } } };
+      ws[`S${r}`] = { t: 'n', f: `MIN(1,MAX(0,Q${r}-(12-${result.month})))`, s: { ...bodyStyle(r), font: { color: { rgb: 'B42318' }, bold: true, sz: 10 } } };
+      ws[`T${r}`] = { t: 's', f: `IF(S${r}>=1,"지급",IF(S${r}>0,"부분지급","미지급"))`, s: bodyStyle(r) };
+      ws[`U${r}`] = { t: 'n', f: `MIN(Q${r},${13 - result.month})`, s: bodyStyle(r) };
+      ws[`V${r}`] = { t: 'n', f: `MAX(0,Q${r}-U${r})`, s: bodyStyle(r) };
+      ['S','T','Q'].forEach(col => {
+        if (ws[`${col}${r}`]) ws[`${col}${r}`].s = ws[`${col}${r}`].s || bodyStyle(r);
+      });
+    }
+  }
+
+  function addMxLeaveAccumSheet(wb, items) {
+    const rows = [['구분', '이름', '점포', '날짜', '매장근무계획값', '판정', '차감일수', '월', '월누적', '연누적', '원본셀']];
+    for (const x of items) rows.push([x.group, x.name, x.store, x.date, x.planValue, x.usage, x.amount, x.date ? x.date.slice(0, 7) : '', '', '', x.sourceCell]);
+    const ws = addSheet(wb, 'MX 연차 사용 누적', rows, { widths: [8, 12, 16, 12, 20, 14, 10, 10, 10, 10, 10] });
+    for (let r = 2; r <= rows.length; r++) {
+      ws[`I${r}`] = { t: 'n', f: `SUMIFS($G:$G,$B:$B,$B${r},$H:$H,$H${r})`, s: bodyStyle(r) };
+      ws[`J${r}`] = { t: 'n', f: `SUMIFS($G:$G,$B:$B,$B${r})`, s: bodyStyle(r) };
+      const usageCell = ws[`F${r}`];
+      if (usageCell) usageCell.s = { ...bodyStyle(r), fill: { fgColor: { rgb: 'EAF6EF' } }, font: { color: { rgb: '0B6B43' }, bold: true, sz: 10 } };
+    }
+  }
 
   function addLeaveSheet(wb, items) {
     const rows = [['구분', '이름', '점포', '날짜', '매장근무계획값', '판정', '차감일수', '원본셀']];

@@ -24,7 +24,7 @@
       <div class="hero-copy">
         <p class="eyebrow">ZENIEL Workforce Report</p>
         <h1>근태 관리<br />자동 분석기</h1>
-        <p class="desc">엑셀 4개만 업로드하면 CE/MX 근태와 함께 매장근무계획 기준 연차 사용, 주차별 휴무 초과까지 보고용 엑셀로 정리합니다.</p>
+        <p class="desc">엑셀 4개만 업로드하면 CE/MX 근태, 매장근무계획 기준 연차 사용, 주차별 휴무 초과, MX 연차수당 지급 여부까지 보고용 엑셀로 정리합니다.</p>
         <div class="hero-kpis">
           <div><b>11</b><span>보고 시트</span></div>
           <div><b>자동</b><span>소명 반영</span></div>
@@ -33,8 +33,8 @@
       </div>
       <aside class="version-card">
         <span class="version-label">CURRENT VERSION</span>
-        <strong>v11</strong>
-        <small>근태 + 연차/휴무초과 확인 추가</small>
+        <strong>v12</strong>
+        <small>근태 + MX 연차수당 확인 추가</small>
       </aside>
     </section>
 
@@ -47,7 +47,7 @@
         <label class="upload">
           <b>01</b>
           <span>인력 및 점포별 근무시간.xlsx</span>
-          <small>인력DB / 영업시간DB 기준</small>
+          <small>인력DB / 영업시간DB / 연차DB 기준</small>
           <em class="file-name">파일 선택 전</em>
           <input id="fileMaster" type="file" accept=".xlsx,.xls" />
         </label>
@@ -113,13 +113,14 @@
         <span>MX 근태 미입력</span>
         <span>MX 퇴근 미입력</span>
         <span>MX 소명처리</span>
-        <span>연차 확인</span>
+        <span>MX 연차 수당 확인</span>
+        <span>MX 연차 사용 누적</span>
         <span>휴무 초과 확인</span>
         <span>읽기 확인_웍스</span>
         <span>읽기 확인_매장계획</span>
         <span>스케줄 불일치</span>
       </div>
-      <p class="note"><b>연차 확인</b>은 매장근무계획 기준 연차/반차 사용일을 표시하고, <b>휴무 초과 확인</b>은 주차별 휴무·대체휴무/휴일·연차·보상휴가 합계가 3개를 초과하는 인원을 표시합니다. 대체휴무/대체휴일, 보상휴가 0.5일/대휴(오전·오후)는 같은 기준으로 비교합니다.</p>
+      <p class="note"><b>MX 연차 수당 확인</b>은 연차DB 잔여 기준으로 당월 수당 지급/미지급을 표시하고, 26년 입사자는 TODAY 기준 월차 생성 수량을 자동 확인합니다. <b>MX 연차 사용 누적</b>은 매장근무계획 기준 연차/반차 사용을 누적합니다.</p>
     </section>
   </main>
 
