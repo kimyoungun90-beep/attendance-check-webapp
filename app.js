@@ -33,7 +33,10 @@
   }
 
   function normalizeName(value) {
-    return clean(value).replace(/\s+/g, '');
+    const name = clean(value).replace(/\s+/g, '');
+    // 웍스/매장계획에서 이름이 다르게 들어간 예외 매핑
+    if (name === '반가윤') return '반성미';
+    return name;
   }
 
   function normalizeGroup(value) {
@@ -130,7 +133,7 @@
   function isOffLike(value) {
     const s = clean(value);
     if (!s) return true;
-    return /휴무|휴일|연차|휴가|공가|대체|보상|DIDA|예비군|병가|경조/.test(s);
+    return /휴무|휴일|연차|반차|휴가|공가|대체|대휴|보상|DIDA|예비군|병가|경조/.test(s);
   }
 
   function hasEducation(value) { return clean(value).includes('교육'); }
@@ -153,6 +156,33 @@
     if (/B조/.test(s)) return 'B조';
     if (/C조/.test(s)) return 'C조';
     return '';
+  }
+
+
+  function classifyScheduleForCompare(value) {
+    const raw = clean(value);
+    const s = raw.replace(/\s+/g, '');
+    if (!s) return { key: '', label: '공란', amount: 0, comparable: false };
+
+    const half = /반차|오전|오후|0\.5|0\.5일|반일/.test(s);
+    const shift = extractPlanShift(s) || extractWorksShift(s);
+
+    // 같은 의미로 보는 항목 표준화
+    // - 매장근무계획의 대체휴일 = 웍스스케줄의 대체휴무
+    // - 매장근무계획의 보상휴가 0.5일 = 웍스스케줄의 대휴(오전/오후)
+    if (/대휴/.test(s) && half) return { key: '보상휴가:0.5', label: '보상휴가 0.5', amount: 0.5, comparable: true };
+    if (/보상휴가|보상휴|보상/.test(s)) return { key: `보상휴가:${half ? 0.5 : 1}`, label: `보상휴가 ${half ? 0.5 : 1}`, amount: half ? 0.5 : 1, comparable: true };
+    if (/대체휴무|대체휴일|대체휴|대휴/.test(s)) return { key: `대체휴무:${half ? 0.5 : 1}`, label: `대체휴무/휴일 ${half ? 0.5 : 1}`, amount: half ? 0.5 : 1, comparable: true };
+    if (/반차/.test(s)) return { key: '반차:0.5', label: '반차 0.5', amount: 0.5, comparable: true };
+    if (/연차/.test(s)) return { key: '연차:1', label: '연차 1', amount: 1, comparable: true };
+    if (/휴무/.test(s)) return { key: '휴무:1', label: '휴무 1', amount: 1, comparable: true };
+    if (/휴일/.test(s)) return { key: '휴일:1', label: '휴일 1', amount: 1, comparable: true };
+    if (/공가/.test(s)) return { key: '공가:1', label: '공가 1', amount: 1, comparable: true };
+    if (/휴가/.test(s)) return { key: `휴가:${half ? 0.5 : 1}`, label: `휴가 ${half ? 0.5 : 1}`, amount: half ? 0.5 : 1, comparable: true };
+    if (shift) return { key: `근무:${shift}`, label: shift, amount: 1, comparable: true };
+    if (/교육/.test(s)) return { key: '교육', label: '교육', amount: 0, comparable: true };
+    if (/순환/.test(s)) return { key: '순환', label: '순환', amount: 0, comparable: true };
+    return { key: `기타:${s}`, label: raw, amount: 0, comparable: true };
   }
 
   function findHeaderRow(rows, requiredWords, maxRows = 10) {
@@ -201,7 +231,7 @@
       const attendanceRows = sheetRows(attWb);
       const result = analyze({ peopleRows, hourRows, planRows, worksRows, attendanceRows });
       makeWorkbook(result);
-      setStatus(`분석 완료(v10): MX 지각 ${result.lateRows.length}건, 근태 미입력 ${result.noAttendanceRows.length}건, 퇴근 미입력 ${result.noCheckoutRows.length}건, 스케줄 불일치 ${result.mismatchRows.length}건.<br>결과 엑셀이 다운로드됩니다.`, 'ok');
+      setStatus(`분석 완료(v11): MX 지각 ${result.lateRows.length}건, 근태 미입력 ${result.noAttendanceRows.length}건, 퇴근 미입력 ${result.noCheckoutRows.length}건, 스케줄 불일치 ${result.mismatchRows.length}건.<br>결과 엑셀이 다운로드됩니다.`, 'ok');
     } catch (err) {
       console.error(err);
       setStatus(`오류가 발생했습니다.<br><b>${escapeHtml(err.message || err)}</b><br>파일 양식이나 시트명이 바뀌었는지 확인하세요.`, 'error');
@@ -275,7 +305,7 @@
     const ceRows = [];
     const exceptionRows = [];
 
-    // MX 스케줄 불일치: 점수에는 영향 없음. 휴무/근무 차이도 확인용으로 표시.
+    // MX 스케줄 불일치: 점수에는 영향 없음. 근무조뿐 아니라 휴무/연차/반차/대체휴무/보상휴가 등도 표준화해서 비교한다.
     for (const person of allPeople) {
       if (person.group !== 'MX') continue;
       for (const dc of worksDateCols) {
@@ -284,24 +314,28 @@
         const plan = planByNameDate.get(`${person.name}|${dc.dKey}`);
         const worksText = works?.value || '';
         const planText = plan?.value || '';
-        if (hasEducation(worksText)) continue;
-        const ps = extractPlanShift(planText);
-        const ws = extractWorksShift(worksText);
-        const planOff = isOffLike(planText);
-        const worksOff = isOffLike(worksText);
+        if (!worksText && !planText) continue;
+
+        const worksStd = classifyScheduleForCompare(worksText);
+        const planStd = classifyScheduleForCompare(planText);
+
+        if (hasEducation(worksText) || hasEducation(planText)) continue;
         if (hasRotation(worksText)) {
-          // 순환 문구가 들어가면 웍스 값과 비교하지 않고 매장근무계획의 근무A/B/C를 기준으로 사용한다.
-          // 단, 매장근무계획에서 조를 찾지 못하면 지각 판정 기준이 없으므로 확인 대상에 남긴다.
+          // 순환 문구가 들어가면 웍스 값과 직접 비교하지 않고 매장근무계획의 근무A/B/C를 기준으로 사용한다.
+          // 단, 매장근무계획에서 조를 찾지 못하면 확인 대상에 남긴다.
+          const ps = extractPlanShift(planText);
+          const planOff = isOffLike(planText);
           if (!ps && planText && !planOff) {
-            mismatchRows.push({ name: person.name, date: dc.dKey, store: works?.store || person.store, plan: planText, works: worksText, note: '순환근무이나 매장근무계획에서 근무A/B/C 조 확인 필요' });
+            mismatchRows.push({ name: person.name, date: dc.dKey, store: works?.store || plan?.store || person.store, plan: planText, works: worksText, note: '순환근무이나 매장근무계획에서 근무A/B/C 조 확인 필요' });
           }
           continue;
         }
-        if ((ps || ws || planText || worksText) && (ps !== ws || planOff !== worksOff)) {
+
+        if ((worksStd.comparable || planStd.comparable) && worksStd.key !== planStd.key) {
           mismatchRows.push({
-            name: person.name, date: dc.dKey, store: works?.store || person.store,
+            name: person.name, date: dc.dKey, store: works?.store || plan?.store || person.store,
             plan: planText, works: worksText,
-            note: `매장근무계획상 ${planText || '공란'} / 웍스스케줄상 ${worksText || '공란'}`,
+            note: `매장근무계획상 ${planText || '공란'} [${planStd.label}] / 웍스스케줄상 ${worksText || '공란'} [${worksStd.label}]`,
           });
         }
       }
@@ -607,12 +641,13 @@
     const s = raw.replace(/\s+/g, '');
     if (!s) return null;
     let category = '';
-    let amount = /반차|오전|오후|0\.5/.test(s) ? 0.5 : 1;
+    let amount = /반차|오전|오후|0\.5|0\.5일|반일/.test(s) ? 0.5 : 1;
 
-    // 대체휴무/대체휴일처럼 휴무라는 글자가 포함된 값은 먼저 분류해야 중복 오판정이 나지 않는다.
-    if (/대체휴일/.test(s)) category = '대체휴일';
-    else if (/대체휴무|대체휴/.test(s)) category = '대체휴무';
+    // 대체휴무/대체휴일은 하나의 항목으로 통합
+    // 보상휴가 0.5일은 웍스의 대휴(오전/오후)와 같은 반일 휴무성 항목으로 본다.
+    if (/대휴/.test(s) && /오전|오후|0\.5|반일/.test(s)) { category = '보상휴가'; amount = 0.5; }
     else if (/보상휴가|보상휴|보상/.test(s)) category = '보상휴가';
+    else if (/대체휴일|대체휴무|대체휴|대휴/.test(s)) category = '대체휴무';
     else if (/반차/.test(s)) { category = '반차'; amount = 0.5; }
     else if (/연차/.test(s)) category = '연차';
     else if (/휴무/.test(s)) category = '휴무';
@@ -621,7 +656,7 @@
     else if (/휴가/.test(s)) category = '휴가';
     else return null;
 
-    if (/1일/.test(s)) amount = 1;
+    if (/1일/.test(s) && !/0\.5|반일|오전|오후|반차/.test(s)) amount = 1;
     return { category, amount };
   }
 
@@ -668,7 +703,7 @@
   function buildRestExcessRows(people, planReadRows) {
     const peopleMap = personLookupMap(people);
     const map = new Map();
-    const cats = ['휴무', '대체휴무', '대체휴일', '보상휴가', '연차', '반차', '휴가', '공가', '휴일'];
+    const cats = ['휴무', '대체휴무', '보상휴가', '연차', '반차', '휴가', '공가', '휴일'];
 
     for (const rec of planReadRows) {
       const usage = planRestUsage(rec.value);
@@ -712,7 +747,7 @@
     addReadPlanSheet(wb, result.planReadRows, result.baseDate);
     addMismatchSheet(wb, result.mismatchRows);
 
-    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v10.xlsx`;
+    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v11.xlsx`;
     XLSX.writeFile(wb, fileName, { bookType: 'xlsx', cellStyles: true });
   }
 
@@ -934,20 +969,20 @@
   }
 
   function addRestExcessSheet(wb, items) {
-    const rows = [['구분', '이름', '점포', '주차기간', '휴무', '대체휴무', '대체휴일', '보상휴가', '연차', '반차', '휴가', '공가', '휴일', '합계', '판정', '상세내용']];
+    const rows = [['구분', '이름', '점포', '주차기간', '휴무', '대체휴무/휴일', '보상휴가', '연차', '반차', '휴가', '공가', '휴일', '합계', '판정', '상세내용']];
     for (const x of items) {
       rows.push([
         x.group, x.name, x.store, `${x.weekStart}~${x.weekEnd}`,
-        x['휴무'] || 0, x['대체휴무'] || 0, x['대체휴일'] || 0, x['보상휴가'] || 0,
+        x['휴무'] || 0, x['대체휴무'] || 0, x['보상휴가'] || 0,
         x['연차'] || 0, x['반차'] || 0, x['휴가'] || 0, x['공가'] || 0, x['휴일'] || 0,
         x.total, '3개 초과', x.detail.join(' / ')
       ]);
     }
-    const ws = addSheet(wb, '휴무 초과 확인', rows, { widths: [8, 12, 16, 22, 8, 10, 10, 10, 8, 8, 8, 8, 8, 8, 12, 58] });
+    const ws = addSheet(wb, '휴무 초과 확인', rows, { widths: [8, 12, 16, 22, 8, 14, 10, 8, 8, 8, 8, 8, 8, 12, 58] });
     for (let r = 2; r <= rows.length; r++) {
-      const totalCell = ws[`N${r}`];
+      const totalCell = ws[`M${r}`];
       if (totalCell) totalCell.s = { ...bodyStyle(r), fill: { fgColor: { rgb: 'FFF4E6' } }, font: { color: { rgb: 'B42318' }, bold: true, sz: 10 }, alignment: { horizontal: 'center', vertical: 'center' } };
-      const resultCell = ws[`O${r}`];
+      const resultCell = ws[`N${r}`];
       if (resultCell) resultCell.s = { ...bodyStyle(r), fill: { fgColor: { rgb: 'FFECEC' } }, font: { color: { rgb: 'B42318' }, bold: true, sz: 10 }, alignment: { horizontal: 'center', vertical: 'center' } };
     }
   }
