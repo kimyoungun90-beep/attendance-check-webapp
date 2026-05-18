@@ -246,7 +246,7 @@
       const annualRows = optionalSheetRows(masterWb, ['연차DB', '연차 DB', '연차관리대장']);
       const result = analyze({ peopleRows, hourRows, planRows, worksRows, attendanceRows, annualRows });
       makeWorkbook(result);
-      setStatus(`분석 완료(v12): MX 지각 ${result.lateRows.length}건, 근태 미입력 ${result.noAttendanceRows.length}건, 퇴근 미입력 ${result.noCheckoutRows.length}건, 스케줄 불일치 ${result.mismatchRows.length}건.<br>결과 엑셀이 다운로드됩니다.`, 'ok');
+      setStatus(`분석 완료(v13): MX 지각 ${result.lateRows.length}건, 근태 미입력 ${result.noAttendanceRows.length}건, 퇴근 미입력 ${result.noCheckoutRows.length}건, 스케줄 불일치 ${result.mismatchRows.length}건.<br>결과 엑셀이 다운로드됩니다.`, 'ok');
     } catch (err) {
       console.error(err);
       setStatus(`오류가 발생했습니다.<br><b>${escapeHtml(err.message || err)}</b><br>파일 양식이나 시트명이 바뀌었는지 확인하세요.`, 'error');
@@ -441,8 +441,9 @@
 
     const leaveRows = buildLeaveRows(allPeople, planReadRows);
     const restExcessRows = buildRestExcessRows(allPeople, planReadRows);
+    const annualAllowanceRows = buildAnnualAllowanceRows(allPeople, annualLeaveMap, leaveRows, year, month);
     const autoSummary = buildSummary(allPeople, lateRows, noAttendanceRows, noCheckoutRows);
-    return { year, month, baseDate: baseDateKey, people: allPeople, lateRows, noAttendanceRows, noCheckoutRows, mismatchRows, ceRows, exceptionRows, autoSummary, worksReadRows, planReadRows, leaveRows, restExcessRows };
+    return { year, month, baseDate: baseDateKey, people: allPeople, lateRows, noAttendanceRows, noCheckoutRows, mismatchRows, ceRows, exceptionRows, autoSummary, worksReadRows, planReadRows, leaveRows, restExcessRows, annualAllowanceRows };
   }
 
 
@@ -908,7 +909,7 @@
     addReadPlanSheet(wb, result.planReadRows, result.baseDate);
     addMismatchSheet(wb, result.mismatchRows);
 
-    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v12.xlsx`;
+    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v13.xlsx`;
     XLSX.writeFile(wb, fileName, { bookType: 'xlsx', cellStyles: true });
   }
 
