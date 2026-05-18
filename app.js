@@ -246,7 +246,7 @@
       const annualRows = optionalSheetRows(masterWb, ['연차DB', '연차 DB', '연차관리대장']);
       const result = analyze({ peopleRows, hourRows, planRows, worksRows, attendanceRows, annualRows });
       makeWorkbook(result);
-      setStatus(`분석 완료(v13): MX 지각 ${result.lateRows.length}건, 근태 미입력 ${result.noAttendanceRows.length}건, 퇴근 미입력 ${result.noCheckoutRows.length}건, 스케줄 불일치 ${result.mismatchRows.length}건.<br>결과 엑셀이 다운로드됩니다.`, 'ok');
+      setStatus(`분석 완료(v14): MX 지각 ${result.lateRows.length}건, 근태 미입력 ${result.noAttendanceRows.length}건, 퇴근 미입력 ${result.noCheckoutRows.length}건, 스케줄 불일치 ${result.mismatchRows.length}건.<br>결과 엑셀이 다운로드됩니다.`, 'ok');
     } catch (err) {
       console.error(err);
       setStatus(`오류가 발생했습니다.<br><b>${escapeHtml(err.message || err)}</b><br>파일 양식이나 시트명이 바뀌었는지 확인하세요.`, 'error');
@@ -461,35 +461,77 @@
     return d ? dateKey(d) : '';
   }
 
+  function findAnnualHeaderRow(rows) {
+    for (let r = 0; r < Math.min(rows.length, 40); r++) {
+      const cells = (rows[r] || []).map(v => clean(v).replace(/\s+/g, ''));
+      if (cells.some(c => c.includes('사원명')) && cells.some(c => c.includes('연차기준일'))) return r;
+    }
+    return -1;
+  }
+
+  function colByCompact(header, keyword, fallback = -1) {
+    const key = clean(keyword).replace(/\s+/g, '');
+    const idx = (header || []).findIndex(v => clean(v).replace(/\s+/g, '').includes(key));
+    return idx >= 0 ? idx : fallback;
+  }
+
+  function firstColAfter(header, keyword, afterCol = -1) {
+    const key = clean(keyword).replace(/\s+/g, '');
+    for (let c = Math.max(0, afterCol + 1); c < (header || []).length; c++) {
+      if (clean(header[c]).replace(/\s+/g, '').includes(key)) return c;
+    }
+    return -1;
+  }
+
   function parseAnnualLeaveDB(rows) {
     const map = new Map();
     if (!rows || !rows.length) return map;
-    const h = findHeaderRow(rows, ['사원명', '총개수'], 30);
-    const header = rows[h] || [];
-    if (!header.some(v => clean(v).includes('사원명'))) return map;
-    const nameCol = findCol(header, '사원명', 6);
-    const storeCol = findCol(header, '매장', 4);
-    const empCol = findCol(header, '제니엘사번', findCol(header, '사번', 5));
-    const managerCol = findCol(header, '매니저', 3);
-    const statusCol = findCol(header, '구분 1', findCol(header, '구분1', 1));
-    const typeCol = findCol(header, '구분 2', findCol(header, '구분2', 2));
-    const joinCol = header.findIndex(v => clean(v).replace(/\s+/g, '').includes('제니엘입사일'));
-    const baseCol = findCol(header, '연차기준일', 8);
-    const generatedCol = findCol(header, '2026년 발생', findCol(header, '2026년발생', 10));
-    const monthlyCol = findCol(header, '월차', 11);
-    const totalCol = findCol(header, '총개수', 12);
-    const usedCol = header.findIndex(v => clean(v).replace(/\s+/g, '').includes('2026년사용'));
-    const paidCol = header.findIndex(v => clean(v).replace(/\s+/g, '').includes('2026년지급'));
-    const usedPaidCol = findCol(header, '사용+지급', 15);
-    const retireCol = findCol(header, '퇴직정산', 17);
-    let remainCol = header.findIndex(v => clean(v).replace(/\s+/g, '').includes('2026잔여'));
-    if (remainCol < 0) remainCol = findCol(header, '잔여', 18);
-    const memoCol = findCol(header, '비고', -1);
+    const h = findAnnualHeaderRow(rows);
+    if (h < 0) return map;
 
-    for (let r = h + 1; r < rows.length; r++) {
+    const header = rows[h] || [];
+    const sub = rows[h + 1] || [];
+    const compactHeader = header.map(v => clean(v).replace(/\s+/g, ''));
+
+    const nameCol = colByCompact(header, '사원명', 8);
+    const storeCol = colByCompact(header, '매장', 6);
+    const empCol = colByCompact(header, '제니엘사번', colByCompact(header, '사번', 7));
+    const managerCol = colByCompact(header, '매니저', 5);
+    const statusCol = colByCompact(header, '구분1', 3);
+    const typeCol = colByCompact(header, '구분2', 4);
+    const joinCol = colByCompact(header, '제니엘입사일', 9);
+    const baseCol = colByCompact(header, '연차기준일', 10);
+
+    // 연차DB는 양식이 두 가지다.
+    // 1) 단순형: '2026년 발생 / 월차 / 총개수 / 2026년사용 / 2026년지급 / 사용+지급 / 2026잔여'
+    // 2) 제모스형: Z=2026년 발생(연차), AA=월차, AB=총개수, AD=2026년사용, AE=2026년 연차수당지급, AF=사용+지급, AI=2026잔여
+    const genStart = compactHeader.findIndex(v => v.includes('2026년발생'));
+    let generatedCol = genStart >= 0 ? genStart : colByCompact(header, '2026년발생', -1);
+    let monthlyCol = -1;
+    let totalCol = colByCompact(header, '총개수', -1);
+    if (genStart >= 0) {
+      monthlyCol = sub.findIndex((v, idx) => idx > genStart && idx <= genStart + 3 && clean(v).replace(/\s+/g, '').includes('월차'));
+      if (monthlyCol < 0) monthlyCol = genStart + 1;
+      if (totalCol < 0) totalCol = genStart + 2;
+    }
+    if (generatedCol < 0) generatedCol = totalCol;
+    if (monthlyCol < 0) monthlyCol = colByCompact(header, '월차', -1);
+
+    let usedCol = compactHeader.findIndex(v => v.includes('2026년사용'));
+    let paidCol = compactHeader.findIndex(v => v.includes('2026년지급') || v.includes('연차수당지급'));
+    let usedPaidCol = colByCompact(header, '사용+지급', -1);
+    if (paidCol >= 0 && usedPaidCol < 0) usedPaidCol = paidCol + 1;
+    const retireCol = colByCompact(header, '퇴직정산', -1);
+    let remainCol = compactHeader.findIndex(v => v.includes('2026잔여'));
+    if (remainCol < 0) remainCol = firstColAfter(header, '잔여', usedPaidCol >= 0 ? usedPaidCol : 0);
+    const memoCol = colByCompact(header, '비고', -1);
+
+    for (let r = h + 2; r < rows.length; r++) {
       const row = rows[r] || [];
       const name = normalizeName(row[nameCol]);
       if (!name || name === '사원명') continue;
+      // 아래쪽 빈 수식행(#NAME?, 0 등)은 사원명이 없거나 숫자만 남아 있으니 제외한다.
+      if (/^#/.test(name) || name === '0') continue;
       const rec = {
         name,
         store: normalizeStore(row[storeCol]),
@@ -510,6 +552,12 @@
         memo: memoCol >= 0 ? clean(row[memoCol]) : '',
         sourceRow: r + 1,
       };
+      if (rec.remain === null && rec.total !== null) {
+        const used = rec.used || 0;
+        const paid = rec.paid || 0;
+        const retire = rec.retire || 0;
+        rec.remain = Math.max(0, Math.round((rec.total - used - paid - retire) * 10) / 10);
+      }
       map.set(name, rec);
     }
     return map;
@@ -842,20 +890,41 @@
     return schedule;
   }
 
+  function monthsElapsed(joinDateKey, today = new Date()) {
+    const d = parseDate(joinDateKey);
+    if (!d) return 0;
+    let months = (today.getFullYear() - d.getFullYear()) * 12 + (today.getMonth() - d.getMonth());
+    if (today.getDate() < d.getDate()) months -= 1;
+    return Math.max(0, months);
+  }
+
+  function round1(n) { return Math.round(Number(n || 0) * 10) / 10; }
+
   function buildAnnualAllowanceRows(people, annualMap, leaveRows, year, month) {
     const rows = [];
     const mxPeople = people.filter(p => p.group === 'MX');
-    const threshold = 13 - month; // 5월=8, 6월=7, 7월=6 ... 당월 포함 남은 지급월수
-    const afterMonths = 12 - month;
+    const threshold = Math.max(0, 13 - month); // 5월=8, 6월=7, 7월=6 ... 당월 포함 남은 지급월수
+    const afterMonths = Math.max(0, 12 - month);
+    const today = new Date();
     for (const p of mxPeople) {
       const db = annualMap.get(p.name) || {};
       const usage = getCurrentMonthLeaveUsage(leaveRows, p.name, year, month);
-      const remain = Number(db.remain ?? 0);
-      const adjustedRemain = Math.max(0, remain - usage.total);
+      const joinKey = db.joinDate || '';
+      const join = parseDate(joinKey);
+      const is2026Join = !!join && join.getFullYear() === 2026;
+      const todayMonthlyGenerated = is2026Join ? monthsElapsed(joinKey, today) : 0;
+      const dbRemain = db.remain === null || db.remain === undefined ? null : Number(db.remain);
+      let startRemain;
+      if (is2026Join) {
+        startRemain = Math.max(0, round1(todayMonthlyGenerated - Number(db.used || 0) - Number(db.paid || 0) - Number(db.retire || 0)));
+      } else {
+        startRemain = Number(dbRemain ?? 0);
+      }
+      const adjustedRemain = Math.max(0, round1(startRemain - usage.total));
       const payThisMonth = Math.min(1, Math.max(0, adjustedRemain - afterMonths));
-      const roundedPay = Math.round(payThisMonth * 10) / 10;
+      const roundedPay = round1(payThisMonth);
       const schedule = buildAllowanceSchedule(adjustedRemain, month);
-      const totalScheduled = Math.round(schedule.reduce((sum, x) => sum + x.pay, 0) * 10) / 10;
+      const totalScheduled = round1(schedule.reduce((sum, x) => sum + x.pay, 0));
       const scheduleText = schedule.filter(x => x.pay > 0).map(x => `${x.month}월 ${x.pay}`).join(' / ');
       let status = '미지급';
       if (roundedPay >= 1) status = '지급';
@@ -864,16 +933,18 @@
         group: p.group,
         name: p.name,
         store: p.store,
-        empNo: p.empNo || db.empNo || '',
+        empNo: db.empNo || p.empNo || '',
         manager: db.manager || p.manager || '',
         type: db.type || '',
-        joinDate: db.joinDate || '',
+        joinDate: joinKey,
         annualBaseDate: db.annualBaseDate || '',
         total: db.total,
         used: db.used,
         paid: db.paid,
         remain: db.remain,
-        dbStatus: db.remain === null || db.remain === undefined ? '연차DB 없음/확인필요' : '정상',
+        todayMonthlyGenerated,
+        baseRemain: startRemain,
+        dbStatus: dbRemain === null ? '연차DB 없음/확인필요' : is2026Join ? '26년 입사자 TODAY 기준' : '정상',
         monthAnnualUsed: usage.annual,
         monthHalfUsed: usage.half,
         monthUsedTotal: usage.total,
@@ -883,7 +954,7 @@
         payThisMonth: roundedPay,
         payStatus: status,
         totalScheduled,
-        usableLeave: Math.max(0, Math.round((adjustedRemain - totalScheduled) * 10) / 10),
+        usableLeave: Math.max(0, round1(adjustedRemain - totalScheduled)),
         scheduleText,
         memo: db.memo || '',
       });
@@ -909,7 +980,7 @@
     addReadPlanSheet(wb, result.planReadRows, result.baseDate);
     addMismatchSheet(wb, result.mismatchRows);
 
-    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v13.xlsx`;
+    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v14.xlsx`;
     XLSX.writeFile(wb, fileName, { bookType: 'xlsx', cellStyles: true });
   }
 
@@ -1124,12 +1195,12 @@
       ['ZENIEL MX 연차 수당 지급 확인', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
       ['분석월', `${result.year}-${String(result.month).padStart(2, '0')}`, '오늘 기준', '', '당월 수당 기준', `${13 - result.month}개`, '설명', `${result.month}월은 잔여 ${13 - result.month}개 기준 / ${result.month + 1}월~12월 보전 후 남는 수량만 당월 지급`, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
       ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-      ['구분', '이름', '점포', '사번', '입사일', '연차기준일', '구분2', '총개수', '2026 사용', '2026 지급', '연차DB 잔여', '오늘', '26입사 월차생성', '분석월 연차', '분석월 반차', '분석월 차감', '차감후 잔여', '당월 기준', '당월 지급예상', '지급판정', '5~12월 예정수당', '사용가능연차', '예상 지급월', '비고'],
+      ['구분', '이름', '점포', '사번', '입사일', '연차기준일', '구분2', '총개수', '2026 사용', '2026 지급', '연차DB 잔여', '오늘', '26입사 월차생성', '분석월 연차', '분석월 반차', '분석월 차감', '차감후 잔여', '당월 기준', '당월 지급예상', '지급판정', '잔여 지급예정', '사용가능연차', '예상 지급월', '비고'],
     ];
     for (const x of result.annualAllowanceRows) {
       rows.push([
         x.group, x.name, x.store, x.empNo, x.joinDate, x.annualBaseDate, x.type,
-        x.total ?? '', x.used ?? '', x.paid ?? '', x.remain ?? '', '', '',
+        x.total ?? '', x.used ?? '', x.paid ?? '', x.remain ?? '', '', x.todayMonthlyGenerated ?? '',
         x.monthAnnualUsed, x.monthHalfUsed, x.monthUsedTotal, x.adjustedRemain,
         x.threshold, x.payThisMonth, x.payStatus, x.totalScheduled, x.usableLeave, x.scheduleText, x.memo || x.dbStatus,
       ]);
@@ -1139,20 +1210,13 @@
       { s: { r: 0, c: 0 }, e: { r: 0, c: 23 } },
       { s: { r: 1, c: 6 }, e: { r: 1, c: 23 } },
     ];
+    // 오늘 기준은 엑셀에서 열 때마다 갱신되도록 표기한다. 계산값은 웹앱에서 안정적으로 산출해서 #VALUE! 오류를 방지한다.
     ws['D2'] = { t: 'n', f: 'TODAY()', s: kpiStyle('EAF6EF') };
     for (let r = 5; r <= rows.length; r++) {
-      const joinCell = `E${r}`;
       ws[`L${r}`] = { t: 'n', f: 'TODAY()', s: bodyStyle(r) };
-      ws[`M${r}`] = { t: 'n', f: `IFERROR(IF(YEAR(DATEVALUE(${joinCell}))=2026,MAX(0,DATEDIF(DATEVALUE(${joinCell}),TODAY(),"m")),0),0)`, s: bodyStyle(r) };
-      // 26년 입사자는 TODAY 기준 월차 생성 수량으로 차감후 잔여를 재계산, 그 외 인원은 연차DB 잔여 기준에서 분석월 사용분 차감
-      ws[`Q${r}`] = { t: 'n', f: `MAX(0,IFERROR(IF(YEAR(DATEVALUE(${joinCell}))=2026,M${r}-I${r}-J${r},K${r}),K${r})-P${r})`, s: { ...bodyStyle(r), fill: { fgColor: { rgb: 'FFF4E6' } }, font: { color: { rgb: '0B2F22' }, bold: true, sz: 10 } } };
-      ws[`S${r}`] = { t: 'n', f: `MIN(1,MAX(0,Q${r}-(12-${result.month})))`, s: { ...bodyStyle(r), font: { color: { rgb: 'B42318' }, bold: true, sz: 10 } } };
-      ws[`T${r}`] = { t: 's', f: `IF(S${r}>=1,"지급",IF(S${r}>0,"부분지급","미지급"))`, s: bodyStyle(r) };
-      ws[`U${r}`] = { t: 'n', f: `MIN(Q${r},${13 - result.month})`, s: bodyStyle(r) };
-      ws[`V${r}`] = { t: 'n', f: `MAX(0,Q${r}-U${r})`, s: bodyStyle(r) };
-      ['S','T','Q'].forEach(col => {
-        if (ws[`${col}${r}`]) ws[`${col}${r}`].s = ws[`${col}${r}`].s || bodyStyle(r);
-      });
+      const q = ws[`Q${r}`]; if (q) q.s = { ...bodyStyle(r), fill: { fgColor: { rgb: 'FFF4E6' } }, font: { color: { rgb: '0B2F22' }, bold: true, sz: 10 } };
+      const sCell = ws[`S${r}`]; if (sCell) sCell.s = { ...bodyStyle(r), font: { color: { rgb: 'B42318' }, bold: true, sz: 10 } };
+      const tCell = ws[`T${r}`]; if (tCell) tCell.s = { ...bodyStyle(r), font: { color: { rgb: clean(tCell.v).includes('미지급') ? 'B42318' : '0B6B43' }, bold: true, sz: 10 } };
     }
   }
 
