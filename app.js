@@ -246,7 +246,7 @@
       const annualRows = optionalSheetRows(masterWb, ['연차DB', '연차 DB', '연차관리대장']);
       const result = analyze({ peopleRows, hourRows, planRows, worksRows, attendanceRows, annualRows });
       makeWorkbook(result);
-      setStatus(`분석 완료(v14): MX 지각 ${result.lateRows.length}건, 근태 미입력 ${result.noAttendanceRows.length}건, 퇴근 미입력 ${result.noCheckoutRows.length}건, 스케줄 불일치 ${result.mismatchRows.length}건.<br>결과 엑셀이 다운로드됩니다.`, 'ok');
+      setStatus(`분석 완료(v15): MX 지각 ${result.lateRows.length}건, 근태 미입력 ${result.noAttendanceRows.length}건, 퇴근 미입력 ${result.noCheckoutRows.length}건, 스케줄 불일치 ${result.mismatchRows.length}건.<br>결과 엑셀이 다운로드됩니다.`, 'ok');
     } catch (err) {
       console.error(err);
       setStatus(`오류가 발생했습니다.<br><b>${escapeHtml(err.message || err)}</b><br>파일 양식이나 시트명이 바뀌었는지 확인하세요.`, 'error');
@@ -458,7 +458,11 @@
 
   function parseAnnualDate(value) {
     const d = parseDate(value);
-    return d ? dateKey(d) : '';
+    if (!d) return '';
+    // 연차DB는 xlsx-js가 Date 셀을 하루 전으로 읽는 케이스가 있어 보정한다.
+    // 문자열 날짜는 그대로 사용하고, 실제 Date 객체로 들어온 값만 +1일 처리한다.
+    const fixed = value instanceof Date ? addDays(d, 1) : d;
+    return dateKey(fixed);
   }
 
   function findAnnualHeaderRow(rows) {
@@ -816,18 +820,22 @@
   function buildLeaveRows(people, planReadRows) {
     const peopleMap = personLookupMap(people);
     const rows = [];
+    const todayKey = dateKey(new Date());
     for (const rec of planReadRows) {
       const usage = planLeaveUsage(rec.value);
       if (!usage) continue;
       const person = peopleMap.get(rec.name) || { group: '', name: rec.name, store: rec.store || '' };
+      const planned = rec.date && rec.date > todayKey;
       rows.push({
         group: person.group || '',
         name: person.name || rec.name,
         store: rec.store || person.store || '',
         date: rec.date,
         planValue: rec.value,
-        usage: usage.label,
+        usage: planned ? `${usage.type} 사용 예정` : usage.label,
+        status: planned ? '사용 예정' : '사용 확정',
         amount: usage.amount,
+        monthKey: rec.date ? rec.date.slice(0, 7) : '',
         sourceCell: rec.sourceCell,
       });
     }
@@ -867,15 +875,33 @@
 
   function getCurrentMonthLeaveUsage(leaveRows, name, year, month) {
     const ym = `${year}-${String(month).padStart(2, '0')}`;
-    let annual = 0, half = 0, total = 0;
+    let annual = 0, half = 0, total = 0, planned = 0, confirmed = 0;
     for (const row of leaveRows) {
       if (row.name !== name || !String(row.date).startsWith(ym)) continue;
       if (row.amount === 0.5) half += 1;
       else annual += 1;
       total += Number(row.amount || 0);
+      if (row.status === '사용 예정') planned += Number(row.amount || 0);
+      else confirmed += Number(row.amount || 0);
     }
-    return { annual, half, total };
+    return { annual, half, total: round1(total), planned: round1(planned), confirmed: round1(confirmed) };
   }
+
+  function getLeaveUsageUntil(leaveRows, name, limitKey) {
+    let annual = 0, half = 0, total = 0, planned = 0, confirmed = 0;
+    for (const row of leaveRows) {
+      if (row.name !== name || !row.date || row.date > limitKey) continue;
+      if (row.amount === 0.5) half += 1;
+      else annual += 1;
+      total += Number(row.amount || 0);
+      if (row.status === '사용 예정') planned += Number(row.amount || 0);
+      else confirmed += Number(row.amount || 0);
+    }
+    return { annual, half, total: round1(total), planned: round1(planned), confirmed: round1(confirmed) };
+  }
+
+  function monthEndDate(year, month) { return new Date(year, month, 0); }
+  function prevMonthEndDate(year, month) { return new Date(year, month - 1, 0); }
 
   function buildAllowanceSchedule(adjustedRemain, month) {
     const schedule = [];
@@ -898,37 +924,76 @@
     return Math.max(0, months);
   }
 
+  function monthsElapsedAtDate(joinDateKey, targetDate) {
+    return monthsElapsed(joinDateKey, targetDate);
+  }
+
   function round1(n) { return Math.round(Number(n || 0) * 10) / 10; }
 
   function buildAnnualAllowanceRows(people, annualMap, leaveRows, year, month) {
     const rows = [];
     const mxPeople = people.filter(p => p.group === 'MX');
-    const threshold = Math.max(0, 13 - month); // 5월=8, 6월=7, 7월=6 ... 당월 포함 남은 지급월수
+    const threshold = Math.max(0, 13 - month); // 25년 이전 입사자: 5월=8, 6월=7, 7월=6 ... 당월 포함 남은 지급월수
     const afterMonths = Math.max(0, 12 - month);
+    const monthEnd = monthEndDate(year, month);
+    const prevEnd = prevMonthEndDate(year, month);
+    const monthEndKey = dateKey(monthEnd);
     const today = new Date();
+
     for (const p of mxPeople) {
       const db = annualMap.get(p.name) || {};
       const usage = getCurrentMonthLeaveUsage(leaveRows, p.name, year, month);
+      const usageThroughMonth = getLeaveUsageUntil(leaveRows, p.name, monthEndKey);
       const joinKey = db.joinDate || '';
       const join = parseDate(joinKey);
       const is2026Join = !!join && join.getFullYear() === 2026;
-      const todayMonthlyGenerated = is2026Join ? monthsElapsed(joinKey, today) : 0;
+      const todayMonthlyGenerated = is2026Join ? monthsElapsedAtDate(joinKey, today) : 0;
+      const generatedToMonthEnd = is2026Join ? monthsElapsedAtDate(joinKey, monthEnd) : 0;
+      const generatedBeforeMonth = is2026Join ? monthsElapsedAtDate(joinKey, prevEnd) : 0;
+      const generatedThisMonth = Math.max(0, generatedToMonthEnd - generatedBeforeMonth);
       const dbRemain = db.remain === null || db.remain === undefined ? null : Number(db.remain);
+      const usedDb = Number(db.used || 0);
+      const paidDb = Number(db.paid || 0);
+      const retireDb = Number(db.retire || 0);
+
       let startRemain;
+      let adjustedRemain;
+      let roundedPay;
+      let schedule = [];
+      let totalScheduled = 0;
+      let scheduleText = '';
+      let status = '미지급';
+      let ruleMemo = '';
+      let allowanceBasis = threshold;
+
       if (is2026Join) {
-        startRemain = Math.max(0, round1(todayMonthlyGenerated - Number(db.used || 0) - Number(db.paid || 0) - Number(db.retire || 0)));
+        // 26년 입사자는 25년 이전 입사자처럼 8개/7개 기준을 쓰지 않는다.
+        // 입사일 기준 1개월마다 월차가 발생하고, 해당 월차가 연차/반차로 이미 사용되었거나 사용 예정이면 해당월 수당은 미지급된다.
+        startRemain = Math.max(0, round1(generatedToMonthEnd - usedDb - paidDb - retireDb));
+        adjustedRemain = Math.max(0, round1(generatedToMonthEnd - usedDb - paidDb - retireDb - usageThroughMonth.total));
+        roundedPay = generatedThisMonth > 0 ? round1(Math.min(generatedThisMonth, Math.max(0, adjustedRemain))) : 0;
+        if (roundedPay >= 1) status = '지급';
+        else if (roundedPay > 0) status = '부분지급';
+        else status = generatedThisMonth > 0 ? '미지급' : '미지급(미발생)';
+        scheduleText = generatedThisMonth > 0
+          ? `${month}월 월차 ${generatedThisMonth}개 발생 / 사용·예정 ${usageThroughMonth.total}개 반영`
+          : `${month}월 월차 발생 없음`;
+        totalScheduled = roundedPay;
+        allowanceBasis = generatedThisMonth;
+        ruleMemo = '26년 입사자: 월차 발생분 기준 지급. 발생 전 선사용/당월 사용·예정 시 미지급';
       } else {
         startRemain = Number(dbRemain ?? 0);
+        adjustedRemain = Math.max(0, round1(startRemain - usage.total));
+        roundedPay = round1(Math.min(1, Math.max(0, adjustedRemain - afterMonths)));
+        schedule = buildAllowanceSchedule(adjustedRemain, month);
+        totalScheduled = round1(schedule.reduce((sum, x) => sum + x.pay, 0));
+        scheduleText = schedule.filter(x => x.pay > 0).map(x => `${x.month}월 ${x.pay}`).join(' / ');
+        if (roundedPay >= 1) status = '지급';
+        else if (roundedPay > 0) status = '부분지급';
+        else status = '미지급';
+        ruleMemo = `${month}월 잔여 ${threshold}개 기준. 당월 연차/반차 사용·예정분 차감 후 판단`;
       }
-      const adjustedRemain = Math.max(0, round1(startRemain - usage.total));
-      const payThisMonth = Math.min(1, Math.max(0, adjustedRemain - afterMonths));
-      const roundedPay = round1(payThisMonth);
-      const schedule = buildAllowanceSchedule(adjustedRemain, month);
-      const totalScheduled = round1(schedule.reduce((sum, x) => sum + x.pay, 0));
-      const scheduleText = schedule.filter(x => x.pay > 0).map(x => `${x.month}월 ${x.pay}`).join(' / ');
-      let status = '미지급';
-      if (roundedPay >= 1) status = '지급';
-      else if (roundedPay > 0) status = '부분지급';
+
       rows.push({
         group: p.group,
         name: p.name,
@@ -943,20 +1008,25 @@
         paid: db.paid,
         remain: db.remain,
         todayMonthlyGenerated,
+        generatedToMonthEnd,
+        generatedThisMonth,
         baseRemain: startRemain,
-        dbStatus: dbRemain === null ? '연차DB 없음/확인필요' : is2026Join ? '26년 입사자 TODAY 기준' : '정상',
+        dbStatus: dbRemain === null ? '연차DB 없음/확인필요' : is2026Join ? '26년 입사자 월차 기준' : '25년 이전 입사자 잔여 기준',
         monthAnnualUsed: usage.annual,
         monthHalfUsed: usage.half,
+        monthPlannedUsed: usage.planned,
+        monthConfirmedUsed: usage.confirmed,
         monthUsedTotal: usage.total,
+        usageThroughMonth: usageThroughMonth.total,
         adjustedRemain,
-        threshold,
+        threshold: allowanceBasis,
         afterMonths,
         payThisMonth: roundedPay,
         payStatus: status,
         totalScheduled,
         usableLeave: Math.max(0, round1(adjustedRemain - totalScheduled)),
         scheduleText,
-        memo: db.memo || '',
+        memo: [db.memo, ruleMemo].filter(Boolean).join(' / '),
       });
     }
     return rows.sort((a, b) => a.store.localeCompare(b.store, 'ko') || a.name.localeCompare(b.name, 'ko'));
@@ -980,7 +1050,7 @@
     addReadPlanSheet(wb, result.planReadRows, result.baseDate);
     addMismatchSheet(wb, result.mismatchRows);
 
-    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v14.xlsx`;
+    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v15.xlsx`;
     XLSX.writeFile(wb, fileName, { bookType: 'xlsx', cellStyles: true });
   }
 
@@ -1191,55 +1261,60 @@
 
 
   function addAnnualAllowanceSheet(wb, result) {
+    const monthThreshold = Math.max(0, 13 - result.month);
     const rows = [
-      ['ZENIEL MX 연차 수당 지급 확인', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-      ['분석월', `${result.year}-${String(result.month).padStart(2, '0')}`, '오늘 기준', '', '당월 수당 기준', `${13 - result.month}개`, '설명', `${result.month}월은 잔여 ${13 - result.month}개 기준 / ${result.month + 1}월~12월 보전 후 남는 수량만 당월 지급`, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-      ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-      ['구분', '이름', '점포', '사번', '입사일', '연차기준일', '구분2', '총개수', '2026 사용', '2026 지급', '연차DB 잔여', '오늘', '26입사 월차생성', '분석월 연차', '분석월 반차', '분석월 차감', '차감후 잔여', '당월 기준', '당월 지급예상', '지급판정', '잔여 지급예정', '사용가능연차', '예상 지급월', '비고'],
+      ['ZENIEL MX 연차 수당 지급 확인', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+      ['분석월', `${result.year}-${String(result.month).padStart(2, '0')}`, '오늘 기준', '', '25년 이전 기준', `${result.month}월 잔여 ${monthThreshold}개`, '26년 입사자 기준', '입사일 기준 1개월마다 월차 발생, 사용/예정 시 해당월 수당 미지급', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+      ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+      ['구분', '이름', '점포', '사번', '입사일', '연차기준일', '구분2', '총개수', '2026 사용', '2026 지급', '연차DB 잔여', '오늘', '26입사 TODAY 월차', '26입사 당월월차', '분석월 연차', '분석월 반차', '분석월 예정차감', '분석월 확정차감', '분석월 총차감', '월말누적 차감', '차감후 잔여', '당월 기준', '당월 지급예상', '지급판정', '잔여 지급예정', '사용가능연차', '예상 지급월', '비고'],
     ];
     for (const x of result.annualAllowanceRows) {
       rows.push([
         x.group, x.name, x.store, x.empNo, x.joinDate, x.annualBaseDate, x.type,
-        x.total ?? '', x.used ?? '', x.paid ?? '', x.remain ?? '', '', x.todayMonthlyGenerated ?? '',
-        x.monthAnnualUsed, x.monthHalfUsed, x.monthUsedTotal, x.adjustedRemain,
+        x.total ?? '', x.used ?? '', x.paid ?? '', x.remain ?? '', '', x.todayMonthlyGenerated ?? '', x.generatedThisMonth ?? '',
+        x.monthAnnualUsed, x.monthHalfUsed, x.monthPlannedUsed, x.monthConfirmedUsed, x.monthUsedTotal, x.usageThroughMonth, x.adjustedRemain,
         x.threshold, x.payThisMonth, x.payStatus, x.totalScheduled, x.usableLeave, x.scheduleText, x.memo || x.dbStatus,
       ]);
     }
-    const ws = addSheet(wb, 'MX 연차 수당 확인', rows, { widths: [8, 12, 16, 12, 12, 12, 14, 9, 10, 10, 11, 12, 15, 11, 11, 11, 11, 10, 12, 10, 13, 12, 38, 30], titleRows: [0], subtitleRows: [1], headerRow: 3, autofilter: true });
+    const ws = addSheet(wb, 'MX 연차 수당 확인', rows, { widths: [8, 12, 16, 12, 12, 12, 14, 9, 10, 10, 11, 12, 15, 14, 11, 11, 12, 12, 12, 13, 11, 10, 12, 12, 13, 12, 38, 42], titleRows: [0], subtitleRows: [1], headerRow: 3, autofilter: true });
     ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 23 } },
-      { s: { r: 1, c: 6 }, e: { r: 1, c: 23 } },
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 27 } },
+      { s: { r: 1, c: 6 }, e: { r: 1, c: 27 } },
     ];
-    // 오늘 기준은 엑셀에서 열 때마다 갱신되도록 표기한다. 계산값은 웹앱에서 안정적으로 산출해서 #VALUE! 오류를 방지한다.
-    ws['D2'] = { t: 'n', f: 'TODAY()', s: kpiStyle('EAF6EF') };
+    // 오늘 기준은 엑셀에서 열 때마다 갱신되도록 TODAY()를 넣고, 날짜 서식을 강제한다.
+    ws['D2'] = { t: 'n', f: 'TODAY()', z: 'yyyy-mm-dd', s: kpiStyle('EAF6EF') };
     for (let r = 5; r <= rows.length; r++) {
-      ws[`L${r}`] = { t: 'n', f: 'TODAY()', s: bodyStyle(r) };
-      const q = ws[`Q${r}`]; if (q) q.s = { ...bodyStyle(r), fill: { fgColor: { rgb: 'FFF4E6' } }, font: { color: { rgb: '0B2F22' }, bold: true, sz: 10 } };
-      const sCell = ws[`S${r}`]; if (sCell) sCell.s = { ...bodyStyle(r), font: { color: { rgb: 'B42318' }, bold: true, sz: 10 } };
-      const tCell = ws[`T${r}`]; if (tCell) tCell.s = { ...bodyStyle(r), font: { color: { rgb: clean(tCell.v).includes('미지급') ? 'B42318' : '0B6B43' }, bold: true, sz: 10 } };
+      ws[`L${r}`] = { t: 'n', f: 'TODAY()', z: 'yyyy-mm-dd', s: bodyStyle(r) };
+      const u = ws[`U${r}`]; if (u) u.s = { ...bodyStyle(r), fill: { fgColor: { rgb: 'FFF4E6' } }, font: { color: { rgb: '0B2F22' }, bold: true, sz: 10 } };
+      const wCell = ws[`W${r}`]; if (wCell) wCell.s = { ...bodyStyle(r), font: { color: { rgb: 'B42318' }, bold: true, sz: 10 } };
+      const xCell = ws[`X${r}`]; if (xCell) xCell.s = { ...bodyStyle(r), font: { color: { rgb: clean(xCell.v).includes('미지급') ? 'B42318' : '0B6B43' }, bold: true, sz: 10 } };
     }
   }
 
   function addMxLeaveAccumSheet(wb, items) {
-    const rows = [['구분', '이름', '점포', '날짜', '매장근무계획값', '판정', '차감일수', '월', '월누적', '연누적', '원본셀']];
-    for (const x of items) rows.push([x.group, x.name, x.store, x.date, x.planValue, x.usage, x.amount, x.date ? x.date.slice(0, 7) : '', '', '', x.sourceCell]);
-    const ws = addSheet(wb, 'MX 연차 사용 누적', rows, { widths: [8, 12, 16, 12, 20, 14, 10, 10, 10, 10, 10] });
+    const rows = [['구분', '이름', '점포', '날짜', '매장근무계획값', '판정', '사용상태', '차감일수', '월', '월누적', '연누적', '원본셀']];
+    for (const x of items) rows.push([x.group, x.name, x.store, x.date, x.planValue, x.usage, x.status, x.amount, x.monthKey || (x.date ? x.date.slice(0, 7) : ''), '', '', x.sourceCell]);
+    const ws = addSheet(wb, 'MX 연차 사용 누적', rows, { widths: [8, 12, 16, 12, 20, 16, 12, 10, 10, 10, 10, 10] });
     for (let r = 2; r <= rows.length; r++) {
-      ws[`I${r}`] = { t: 'n', f: `SUMIFS($G:$G,$B:$B,$B${r},$H:$H,$H${r})`, s: bodyStyle(r) };
-      ws[`J${r}`] = { t: 'n', f: `SUMIFS($G:$G,$B:$B,$B${r})`, s: bodyStyle(r) };
+      ws[`J${r}`] = { t: 'n', f: `SUMIFS($H:$H,$B:$B,$B${r},$I:$I,$I${r})`, s: bodyStyle(r) };
+      ws[`K${r}`] = { t: 'n', f: `SUMIFS($H:$H,$B:$B,$B${r})`, s: bodyStyle(r) };
       const usageCell = ws[`F${r}`];
       if (usageCell) usageCell.s = { ...bodyStyle(r), fill: { fgColor: { rgb: 'EAF6EF' } }, font: { color: { rgb: '0B6B43' }, bold: true, sz: 10 } };
+      const statusCell = ws[`G${r}`];
+      if (statusCell) statusCell.s = { ...bodyStyle(r), fill: { fgColor: { rgb: clean(statusCell.v).includes('예정') ? 'FFF4E6' : 'EAF6EF' } }, font: { color: { rgb: clean(statusCell.v).includes('예정') ? 'B45309' : '0B6B43' }, bold: true, sz: 10 } };
     }
   }
 
   function addLeaveSheet(wb, items) {
-    const rows = [['구분', '이름', '점포', '날짜', '매장근무계획값', '판정', '차감일수', '원본셀']];
-    for (const x of items) rows.push([x.group, x.name, x.store, x.date, x.planValue, x.usage, x.amount, x.sourceCell]);
-    const ws = addSheet(wb, '연차 확인', rows, { widths: [8, 12, 16, 12, 20, 14, 10, 10] });
+    const rows = [['구분', '이름', '점포', '날짜', '매장근무계획값', '판정', '사용상태', '차감일수', '원본셀']];
+    for (const x of items) rows.push([x.group, x.name, x.store, x.date, x.planValue, x.usage, x.status, x.amount, x.sourceCell]);
+    const ws = addSheet(wb, '연차 확인', rows, { widths: [8, 12, 16, 12, 20, 16, 12, 10, 10] });
     for (let r = 2; r <= rows.length; r++) {
       const usageCell = ws[`F${r}`];
       if (usageCell) usageCell.s = { ...bodyStyle(r), fill: { fgColor: { rgb: 'EAF6EF' } }, font: { color: { rgb: '0B6B43' }, bold: true, sz: 10 } };
-      const amountCell = ws[`G${r}`];
+      const statusCell = ws[`G${r}`];
+      if (statusCell) statusCell.s = { ...bodyStyle(r), fill: { fgColor: { rgb: clean(statusCell.v).includes('예정') ? 'FFF4E6' : 'EAF6EF' } }, font: { color: { rgb: clean(statusCell.v).includes('예정') ? 'B45309' : '0B6B43' }, bold: true, sz: 10 } };
+      const amountCell = ws[`H${r}`];
       if (amountCell) amountCell.s = { ...bodyStyle(r), font: { color: { rgb: 'B42318' }, bold: true, sz: 10 }, alignment: { horizontal: 'center', vertical: 'center' } };
     }
   }
