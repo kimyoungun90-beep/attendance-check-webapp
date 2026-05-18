@@ -201,7 +201,7 @@
       const attendanceRows = sheetRows(attWb);
       const result = analyze({ peopleRows, hourRows, planRows, worksRows, attendanceRows });
       makeWorkbook(result);
-      setStatus(`분석 완료(v9): MX 지각 ${result.lateRows.length}건, 근태 미입력 ${result.noAttendanceRows.length}건, 퇴근 미입력 ${result.noCheckoutRows.length}건, 스케줄 불일치 ${result.mismatchRows.length}건.<br>결과 엑셀이 다운로드됩니다.`, 'ok');
+      setStatus(`분석 완료(v10): MX 지각 ${result.lateRows.length}건, 근태 미입력 ${result.noAttendanceRows.length}건, 퇴근 미입력 ${result.noCheckoutRows.length}건, 스케줄 불일치 ${result.mismatchRows.length}건.<br>결과 엑셀이 다운로드됩니다.`, 'ok');
     } catch (err) {
       console.error(err);
       setStatus(`오류가 발생했습니다.<br><b>${escapeHtml(err.message || err)}</b><br>파일 양식이나 시트명이 바뀌었는지 확인하세요.`, 'error');
@@ -389,8 +389,10 @@
       }
     }
 
+    const leaveRows = buildLeaveRows(allPeople, planReadRows);
+    const restExcessRows = buildRestExcessRows(allPeople, planReadRows);
     const autoSummary = buildSummary(allPeople, lateRows, noAttendanceRows, noCheckoutRows);
-    return { year, month, baseDate: baseDateKey, people: allPeople, lateRows, noAttendanceRows, noCheckoutRows, mismatchRows, ceRows, exceptionRows, autoSummary, worksReadRows, planReadRows };
+    return { year, month, baseDate: baseDateKey, people: allPeople, lateRows, noAttendanceRows, noCheckoutRows, mismatchRows, ceRows, exceptionRows, autoSummary, worksReadRows, planReadRows, leaveRows, restExcessRows };
   }
 
   function parsePeople(rows) {
@@ -585,6 +587,114 @@
     return Array.from(summary.values()).sort((a, b) => a.group.localeCompare(b.group, 'ko') || a.store.localeCompare(b.store, 'ko') || a.name.localeCompare(b.name, 'ko'));
   }
 
+
+  function personLookupMap(people) {
+    return new Map(people.map(p => [p.name, p]));
+  }
+
+  function planLeaveUsage(value) {
+    const raw = clean(value);
+    const s = raw.replace(/\s+/g, '');
+    if (!s) return null;
+    // 반차가 포함되면 연차보다 반차를 우선한다. 예: 오전반차, 오후반차, 연차반차 등
+    if (/반차/.test(s)) return { type: '반차', label: '반차 사용', amount: 0.5 };
+    if (/연차/.test(s)) return { type: '연차', label: '연차 사용', amount: 1 };
+    return null;
+  }
+
+  function planRestUsage(value) {
+    const raw = clean(value);
+    const s = raw.replace(/\s+/g, '');
+    if (!s) return null;
+    let category = '';
+    let amount = /반차|오전|오후|0\.5/.test(s) ? 0.5 : 1;
+
+    // 대체휴무/대체휴일처럼 휴무라는 글자가 포함된 값은 먼저 분류해야 중복 오판정이 나지 않는다.
+    if (/대체휴일/.test(s)) category = '대체휴일';
+    else if (/대체휴무|대체휴/.test(s)) category = '대체휴무';
+    else if (/보상휴가|보상휴|보상/.test(s)) category = '보상휴가';
+    else if (/반차/.test(s)) { category = '반차'; amount = 0.5; }
+    else if (/연차/.test(s)) category = '연차';
+    else if (/휴무/.test(s)) category = '휴무';
+    else if (/휴일/.test(s)) category = '휴일';
+    else if (/공가/.test(s)) category = '공가';
+    else if (/휴가/.test(s)) category = '휴가';
+    else return null;
+
+    if (/1일/.test(s)) amount = 1;
+    return { category, amount };
+  }
+
+  function dateFromKey(dKey) {
+    const [y, m, d] = String(dKey).split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+
+  function weekStartMondayFromKey(dKey) {
+    const d = dateFromKey(dKey);
+    const day = d.getDay(); // 일=0, 월=1 ... 토=6
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    return d;
+  }
+
+  function addDays(date, days) {
+    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    d.setDate(d.getDate() + days);
+    return d;
+  }
+
+  function buildLeaveRows(people, planReadRows) {
+    const peopleMap = personLookupMap(people);
+    const rows = [];
+    for (const rec of planReadRows) {
+      const usage = planLeaveUsage(rec.value);
+      if (!usage) continue;
+      const person = peopleMap.get(rec.name) || { group: '', name: rec.name, store: rec.store || '' };
+      rows.push({
+        group: person.group || '',
+        name: person.name || rec.name,
+        store: rec.store || person.store || '',
+        date: rec.date,
+        planValue: rec.value,
+        usage: usage.label,
+        amount: usage.amount,
+        sourceCell: rec.sourceCell,
+      });
+    }
+    return rows.sort((a, b) => a.date.localeCompare(b.date) || a.store.localeCompare(b.store, 'ko') || a.name.localeCompare(b.name, 'ko'));
+  }
+
+  function buildRestExcessRows(people, planReadRows) {
+    const peopleMap = personLookupMap(people);
+    const map = new Map();
+    const cats = ['휴무', '대체휴무', '대체휴일', '보상휴가', '연차', '반차', '휴가', '공가', '휴일'];
+
+    for (const rec of planReadRows) {
+      const usage = planRestUsage(rec.value);
+      if (!usage) continue;
+      const person = peopleMap.get(rec.name) || { group: '', name: rec.name, store: rec.store || '' };
+      const ws = weekStartMondayFromKey(rec.date);
+      const weekStart = dateKey(ws);
+      const weekEnd = dateKey(addDays(ws, 6));
+      const key = `${person.name || rec.name}|${weekStart}`;
+      if (!map.has(key)) {
+        const base = { group: person.group || '', name: person.name || rec.name, store: rec.store || person.store || '', weekStart, weekEnd, detail: [], total: 0 };
+        for (const c of cats) base[c] = 0;
+        map.set(key, base);
+      }
+      const agg = map.get(key);
+      if (!Object.prototype.hasOwnProperty.call(agg, usage.category)) agg[usage.category] = 0;
+      agg[usage.category] += usage.amount;
+      agg.total += usage.amount;
+      agg.detail.push(`${rec.date} ${usage.category}${usage.amount === 0.5 ? '0.5' : ''}(${rec.value})`);
+    }
+
+    return Array.from(map.values())
+      .filter(x => x.total > 3)
+      .sort((a, b) => a.weekStart.localeCompare(b.weekStart) || a.store.localeCompare(b.store, 'ko') || a.name.localeCompare(b.name, 'ko'));
+  }
+
   function makeWorkbook(result) {
     const wb = XLSX.utils.book_new();
     wb.Workbook = { Views: [{ RTL: false }], CalcPr: { calcMode: 'auto' } };
@@ -596,11 +706,13 @@
     addNoAttendanceSheet(wb, result.noAttendanceRows.filter(x => x.group === 'MX'), 'MX 근태 미입력');
     addNoCheckoutSheet(wb, result.noCheckoutRows.filter(x => x.group === 'MX'), 'MX 퇴근 미입력');
     addMxExceptionSheet(wb, result.exceptionRows.filter(x => x.group === 'MX'));
+    addLeaveSheet(wb, result.leaveRows);
+    addRestExcessSheet(wb, result.restExcessRows);
     addReadWorksSheet(wb, result.worksReadRows, result.baseDate);
     addReadPlanSheet(wb, result.planReadRows, result.baseDate);
     addMismatchSheet(wb, result.mismatchRows);
 
-    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v9.xlsx`;
+    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v10.xlsx`;
     XLSX.writeFile(wb, fileName, { bookType: 'xlsx', cellStyles: true });
   }
 
@@ -805,6 +917,38 @@
       // 적용여부는 비워도 적용. 단, A열에 "미적용"을 쓰면 제외하지 않음.
       // 처리결과(I), 처리사유(K), 승인자(L), 비고(M) 어디든 인정/제외/정시 문구가 있으면 제외.
       ws[`J${r}`] = { t: 's', f: `IF($A${r}="미적용","반영",IF(OR(ISNUMBER(SEARCH("인정",$I${r}&$K${r}&$L${r}&$M${r})),ISNUMBER(SEARCH("제외",$I${r}&$K${r}&$L${r}&$M${r})),ISNUMBER(SEARCH("정시",$I${r}&$K${r}&$L${r}&$M${r}))),"제외","반영"))` };
+    }
+  }
+
+
+  function addLeaveSheet(wb, items) {
+    const rows = [['구분', '이름', '점포', '날짜', '매장근무계획값', '판정', '차감일수', '원본셀']];
+    for (const x of items) rows.push([x.group, x.name, x.store, x.date, x.planValue, x.usage, x.amount, x.sourceCell]);
+    const ws = addSheet(wb, '연차 확인', rows, { widths: [8, 12, 16, 12, 20, 14, 10, 10] });
+    for (let r = 2; r <= rows.length; r++) {
+      const usageCell = ws[`F${r}`];
+      if (usageCell) usageCell.s = { ...bodyStyle(r), fill: { fgColor: { rgb: 'EAF6EF' } }, font: { color: { rgb: '0B6B43' }, bold: true, sz: 10 } };
+      const amountCell = ws[`G${r}`];
+      if (amountCell) amountCell.s = { ...bodyStyle(r), font: { color: { rgb: 'B42318' }, bold: true, sz: 10 }, alignment: { horizontal: 'center', vertical: 'center' } };
+    }
+  }
+
+  function addRestExcessSheet(wb, items) {
+    const rows = [['구분', '이름', '점포', '주차기간', '휴무', '대체휴무', '대체휴일', '보상휴가', '연차', '반차', '휴가', '공가', '휴일', '합계', '판정', '상세내용']];
+    for (const x of items) {
+      rows.push([
+        x.group, x.name, x.store, `${x.weekStart}~${x.weekEnd}`,
+        x['휴무'] || 0, x['대체휴무'] || 0, x['대체휴일'] || 0, x['보상휴가'] || 0,
+        x['연차'] || 0, x['반차'] || 0, x['휴가'] || 0, x['공가'] || 0, x['휴일'] || 0,
+        x.total, '3개 초과', x.detail.join(' / ')
+      ]);
+    }
+    const ws = addSheet(wb, '휴무 초과 확인', rows, { widths: [8, 12, 16, 22, 8, 10, 10, 10, 8, 8, 8, 8, 8, 8, 12, 58] });
+    for (let r = 2; r <= rows.length; r++) {
+      const totalCell = ws[`N${r}`];
+      if (totalCell) totalCell.s = { ...bodyStyle(r), fill: { fgColor: { rgb: 'FFF4E6' } }, font: { color: { rgb: 'B42318' }, bold: true, sz: 10 }, alignment: { horizontal: 'center', vertical: 'center' } };
+      const resultCell = ws[`O${r}`];
+      if (resultCell) resultCell.s = { ...bodyStyle(r), fill: { fgColor: { rgb: 'FFECEC' } }, font: { color: { rgb: 'B42318' }, bold: true, sz: 10 }, alignment: { horizontal: 'center', vertical: 'center' } };
     }
   }
 
