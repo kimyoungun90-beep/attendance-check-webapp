@@ -6,7 +6,6 @@
   const fileInputs = {
     master: $('fileMaster'),
     plan: $('filePlan'),
-    works: $('fileWorks'),
     attendance: $('fileAttendance'),
   };
 
@@ -230,91 +229,168 @@
   async function runAnalysis() {
     try {
       const missingFiles = Object.entries(fileInputs).filter(([, el]) => !el.files || !el.files[0]).map(([key]) => key);
-      if (missingFiles.length) { setStatus('엑셀 파일 4개를 모두 업로드해야 합니다.', 'error'); return; }
+      if (missingFiles.length) { setStatus('엑셀 파일 3개를 모두 업로드해야 합니다.', 'error'); return; }
       setStatus('엑셀 파일을 읽고 있습니다...');
-      const [masterWb, planWb, worksWb, attWb] = await Promise.all([
+      const [masterWb, planWb, attWb] = await Promise.all([
         readWorkbook(fileInputs.master.files[0]),
         readWorkbook(fileInputs.plan.files[0]),
-        readWorkbook(fileInputs.works.files[0]),
         readWorkbook(fileInputs.attendance.files[0]),
       ]);
       const peopleRows = sheetRows(masterWb, ['인력DB']);
       const hourRows = sheetRows(masterWb, ['영업시간DB']);
       const planRows = sheetRows(planWb);
-      const worksRows = sheetRows(worksWb);
       const attendanceRows = sheetRows(attWb);
       const annualRows = optionalSheetRows(masterWb, ['연차DB', '연차 DB', '연차관리대장']);
       const payHistoryRows = optionalSheetRows(masterWb, ['연차수당지급DB', '연차 수당 지급 DB', 'MX 연차 수당 확인']);
       const leaveHistoryRows = optionalSheetRows(masterWb, ['연차사용누적DB', '연차 사용 누적 DB', 'MX 연차 사용 누적']);
-      const result = analyze({ peopleRows, hourRows, planRows, worksRows, attendanceRows, annualRows, payHistoryRows, leaveHistoryRows });
+      const transferText = $('transferInput')?.value || '';
+      const result = analyze({ peopleRows, hourRows, planRows, attendanceRows, annualRows, payHistoryRows, leaveHistoryRows, transferText });
       makeWorkbook(result);
-      setStatus(`분석 완료(v16): MX 지각 ${result.lateRows.length}건, 근태 미입력 ${result.noAttendanceRows.length}건, 퇴근 미입력 ${result.noCheckoutRows.length}건, 스케줄 불일치 ${result.mismatchRows.length}건.<br>결과 엑셀이 다운로드됩니다.`, 'ok');
+      setStatus(`분석 완료(v18): MX 지각 ${result.lateRows.length}건, 특별 근무 ${result.specialWorkRows.length}건, 근태 미입력 ${result.noAttendanceRows.length}건, 퇴근 미입력 ${result.noCheckoutRows.length}건.<br>결과 엑셀이 다운로드됩니다.`, 'ok');
     } catch (err) {
       console.error(err);
       setStatus(`오류가 발생했습니다.<br><b>${escapeHtml(err.message || err)}</b><br>파일 양식이나 시트명이 바뀌었는지 확인하세요.`, 'error');
     }
   }
 
-  function inferYearMonth(attendanceRows, worksRows) {
+  function inferYearMonth(attendanceRows, planRows) {
     const manualMonth = clean($('monthInput').value);
     if (manualMonth) { const [y, m] = manualMonth.split('-').map(Number); return { year: y, month: m }; }
 
-    // 1순위: 웍스스케줄 날짜 헤더. 근태관리에는 전월 말 데이터가 섞일 수 있어서 근태관리 첫 날짜로 월을 잡으면 안 됨.
-    let yearFromAttendance = null;
+    // 웍스 미사용 버전: 매장근무계획 헤더는 "01일" 형태라 월 정보가 없을 수 있다.
+    // 따라서 근태관리 날짜 중 가장 많이 등장하는 연월을 분석월로 잡는다. 전월 말 1~2건이 섞여도 밀리지 않게 하기 위함.
     const attHeader = findHeaderRow(attendanceRows, ['이름', '근무일자']);
     const dateCol = findCol(attendanceRows[attHeader], '근무일자', 1);
+    const counts = new Map();
+    let latest = null;
     for (let r = attHeader + 1; r < attendanceRows.length; r++) {
-      const d = parseDate(attendanceRows[r][dateCol]);
-      if (d) { yearFromAttendance = d.getFullYear(); break; }
+      const d = parseDate(attendanceRows[r]?.[dateCol]);
+      if (!d) continue;
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      counts.set(ym, (counts.get(ym) || 0) + 1);
+      if (!latest || d > latest) latest = d;
     }
-
-    const headerRow = findHeaderRow(worksRows, ['성명'], 20);
-    const header = worksRows[headerRow] || [];
-    for (let c = 0; c < header.length; c++) {
-      const d = parseDate(header[c], yearFromAttendance || new Date().getFullYear());
-      if (d) return { year: d.getFullYear(), month: d.getMonth() + 1 };
+    if (counts.size) {
+      const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0].localeCompare(a[0]));
+      const [y, m] = sorted[0][0].split('-').map(Number);
+      return { year: y, month: m };
     }
-
-    // 2순위: 웍스스케줄 A1 등에 적힌 월 숫자
-    const firstCellMonth = Number(clean(worksRows?.[0]?.[0]));
-    if (firstCellMonth >= 1 && firstCellMonth <= 12) return { year: yearFromAttendance || new Date().getFullYear(), month: firstCellMonth };
-
-    // 3순위: 근태관리 날짜
-    for (let r = attHeader + 1; r < attendanceRows.length; r++) {
-      const d = parseDate(attendanceRows[r][dateCol]);
-      if (d) return { year: d.getFullYear(), month: d.getMonth() + 1 };
-    }
+    if (latest) return { year: latest.getFullYear(), month: latest.getMonth() + 1 };
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() + 1 };
   }
 
-  function analyze({ peopleRows, hourRows, planRows, worksRows, attendanceRows, annualRows = [], payHistoryRows = [], leaveHistoryRows = [] }) {
-    const { year, month } = inferYearMonth(attendanceRows, worksRows);
+
+  function isDateLikePart(value) {
+    return !!parseDate(value);
+  }
+
+  function parseTransferRules(text) {
+    const rows = [];
+    const lines = clean(text).split(/\n+/).map(v => clean(v)).filter(Boolean);
+    for (let i = 0; i < lines.length; i++) {
+      const raw = lines[i];
+      let parts = raw
+        .replace(/[｜|]/g, ',')
+        .replace(/[→➡➜]/g, ',')
+        .split(/[,	]+/)
+        .map(v => clean(v))
+        .filter(Boolean);
+      if (parts.length < 3) parts = raw.split(/\s+/).map(v => clean(v)).filter(Boolean);
+      parts = parts.filter(v => v !== '/' && v !== '-' && v !== '→');
+
+      let name = normalizeName(parts[0] || '');
+      let beforeStore = '';
+      let untilDate = '';
+      let afterStore = '';
+      let startDate = '';
+      let status = '정상';
+
+      if (parts.length >= 5) {
+        // 권장 형식: 이름, 이전점포, 종료일, 이후점포, 시작일
+        name = normalizeName(parts[0]);
+        beforeStore = normalizeStore(parts[1]);
+        untilDate = dateKey(parseDate(parts[2]));
+        afterStore = normalizeStore(parts[3]);
+        startDate = dateKey(parseDate(parts[4]));
+      } else if (parts.length === 4) {
+        name = normalizeName(parts[0]);
+        const dateIndex = parts.findIndex((v, idx) => idx > 0 && isDateLikePart(v));
+        if (dateIndex === 1) {
+          startDate = dateKey(parseDate(parts[1]));
+          afterStore = normalizeStore(parts[2]);
+          beforeStore = normalizeStore(parts[3]);
+        } else if (dateIndex === 2) {
+          beforeStore = normalizeStore(parts[1]);
+          startDate = dateKey(parseDate(parts[2]));
+          afterStore = normalizeStore(parts[3]);
+        } else {
+          status = '입력확인필요';
+        }
+      } else if (parts.length >= 3) {
+        // 간단 형식: 이름, 시작일, 이후점포
+        name = normalizeName(parts[0]);
+        const dateIndex = parts.findIndex((v, idx) => idx > 0 && isDateLikePart(v));
+        if (dateIndex > 0) {
+          startDate = dateKey(parseDate(parts[dateIndex]));
+          afterStore = normalizeStore(parts[dateIndex + 1] || parts[dateIndex - 1]);
+          if (dateIndex + 2 < parts.length) beforeStore = normalizeStore(parts[dateIndex + 2]);
+        } else {
+          status = '입력확인필요';
+        }
+      }
+
+      if (!name || !startDate || !afterStore) status = '입력확인필요';
+      rows.push({ lineNo: i + 1, name, beforeStore, untilDate, afterStore, startDate, raw, status });
+    }
+    return rows;
+  }
+
+  function buildTransfersByName(rules) {
+    const map = new Map();
+    for (const r of rules || []) {
+      if (!r.name || !r.startDate || !r.afterStore || r.status !== '정상') continue;
+      if (!map.has(r.name)) map.set(r.name, []);
+      map.get(r.name).push(r);
+    }
+    for (const list of map.values()) list.sort((a, b) => a.startDate.localeCompare(b.startDate));
+    return map;
+  }
+
+  function effectiveStoreFor(person, dKey, transfersByName) {
+    const name = normalizeName(person?.name || '');
+    const list = transfersByName?.get(name) || [];
+    let store = normalizeStore(person?.store || '');
+    if (!list.length || !dKey) return store;
+
+    const applicable = list.filter(r => r.startDate && r.startDate <= dKey).sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
+    if (applicable?.afterStore) return applicable.afterStore;
+
+    const nextRule = list.find(r => r.startDate > dKey && r.beforeStore);
+    if (nextRule?.beforeStore) return nextRule.beforeStore;
+    return store;
+  }
+
+  function analyze({ peopleRows, hourRows, planRows, attendanceRows, annualRows = [], payHistoryRows = [], leaveHistoryRows = [], transferText = '' }) {
+    const { year, month } = inferYearMonth(attendanceRows, planRows);
     const manualBaseDate = clean($('baseDateInput').value);
 
     const people = parsePeople(peopleRows);
+    const transferRules = parseTransferRules(transferText);
+    const transfersByName = buildTransfersByName(transferRules);
     const annualLeaveMap = parseAnnualLeaveDB(annualRows);
     const payHistory = parseAllowancePaymentDB(payHistoryRows);
     const peopleByName = new Map(people.map(p => [p.name, p]));
     const peopleByEmp = new Map(people.filter(p => p.empNo).map(p => [p.empNo, p]));
     const workHours = parseWorkHours(hourRows);
     const { planByNameDate, dayCols: planDayCols, planReadRows } = parsePlan(planRows, year, month);
-    const { worksByNameDate, worksDateCols, worksReadRows } = parseWorks(worksRows, year, month);
-    for (const rec of worksReadRows) {
-      const plan = planByNameDate.get(`${rec.name}|${rec.date}`);
-      rec.planValue = plan?.value || '';
-      rec.planShift = plan?.shift || '';
-      rec.isRotation = hasRotation(rec.value);
-      rec.isEducation = hasEducation(rec.value);
-      rec.appliedBasis = rec.isEducation ? '교육 제외' : rec.isRotation ? '순환→매장계획 기준' : isOffLike(rec.value) ? '휴무/제외' : '웍스 기준';
-      rec.appliedShift = rec.isRotation ? rec.planShift : rec.shift;
-    }
     const { attendanceByNameDate, latestAttendanceDate } = parseAttendance(attendanceRows, peopleByName, peopleByEmp);
 
     let baseDate = latestAttendanceDate;
     if (manualBaseDate) baseDate = parseDate(manualBaseDate);
     if (!baseDate) throw new Error('근태관리 파일에서 판정 기준일을 찾지 못했습니다.');
     const baseDateKey = dateKey(baseDate);
+    const planDateSet = new Set(planDayCols.map(x => x.dKey));
 
     const allPeople = people.slice().sort((a, b) => a.group.localeCompare(b.group, 'ko') || a.store.localeCompare(b.store, 'ko') || a.name.localeCompare(b.name, 'ko'));
     const lateRows = [];
@@ -323,91 +399,94 @@
     const mismatchRows = [];
     const ceRows = [];
     const exceptionRows = [];
+    const specialWorkRows = [];
+    const specialWorkMap = new Map();
 
-    // MX 스케줄 불일치: 점수에는 영향 없음. 근무조뿐 아니라 휴무/연차/반차/대체휴무/보상휴가 등도 표준화해서 비교한다.
+    // 특별 근무: 본인 기준점포가 아닌 곳에서 출근을 찍은 경우. 이 날은 지각 판정에서 제외한다.
+    for (const rec of attendanceByNameDate.values()) {
+      if (!rec || rec.firstIn === null || rec.date > baseDateKey || !planDateSet.has(rec.date)) continue;
+      const person = peopleByName.get(rec.name);
+      if (!person) continue;
+      const attendStore = normalizeStore(rec.store);
+      const homeStore = effectiveStoreFor(person, rec.date, transfersByName);
+      if (!attendStore || !homeStore || attendStore === homeStore) continue;
+      const plan = planByNameDate.get(`${person.name}|${rec.date}`);
+      const row = {
+        group: person.group,
+        name: person.name,
+        date: rec.date,
+        homeStore,
+        attendStore,
+        planStore: plan?.store || '',
+        planValue: plan?.value || '',
+        shift: plan?.shift || '',
+        checkIn: minutesToHHMM(rec.firstIn),
+        checkOut: rec.outTime || '',
+        note: '본인 매장이 아닌 출근지점으로 특별 근무 처리 / 지각 판정 제외',
+      };
+      specialWorkRows.push(row);
+      specialWorkMap.set(`${person.name}|${rec.date}`, row);
+    }
+
+    // 스케줄 불일치: 웍스 미사용 기준. 매장근무계획과 실제 근태가 맞지 않는 확인 건만 표시한다.
     for (const person of allPeople) {
       if (person.group !== 'MX') continue;
-      for (const dc of worksDateCols) {
+      for (const dc of planDayCols) {
         if (dc.dKey > baseDateKey) continue;
-        const works = worksByNameDate.get(`${person.name}|${dc.dKey}`);
         const plan = planByNameDate.get(`${person.name}|${dc.dKey}`);
-        const worksText = works?.value || '';
         const planText = plan?.value || '';
-        if (!worksText && !planText) continue;
-
-        const worksStd = classifyScheduleForCompare(worksText);
-        const planStd = classifyScheduleForCompare(planText);
-
-        if (hasEducation(worksText) || hasEducation(planText)) continue;
-        if (hasRotation(worksText)) {
-          // 순환 문구가 들어가면 웍스 값과 직접 비교하지 않고 매장근무계획의 근무A/B/C를 기준으로 사용한다.
-          // 단, 매장근무계획에서 조를 찾지 못하면 확인 대상에 남긴다.
-          const ps = extractPlanShift(planText);
-          const planOff = isOffLike(planText);
-          if (!ps && planText && !planOff) {
-            mismatchRows.push({ name: person.name, date: dc.dKey, store: works?.store || plan?.store || person.store, plan: planText, works: worksText, note: '순환근무이나 매장근무계획에서 근무A/B/C 조 확인 필요' });
-          }
+        const rec = attendanceByNameDate.get(`${person.name}|${dc.dKey}`);
+        const hasIn = rec?.firstIn !== null && rec?.firstIn !== undefined;
+        if (specialWorkMap.has(`${person.name}|${dc.dKey}`)) continue;
+        if (!planText && hasIn) {
+          mismatchRows.push({ name: person.name, date: dc.dKey, store: rec.store || effectiveStoreFor(person, dc.dKey, transfersByName), plan: planText, works: '', note: '매장근무계획 공란이나 출근 기록 있음' });
           continue;
         }
-
-        if ((worksStd.comparable || planStd.comparable) && worksStd.key !== planStd.key) {
-          mismatchRows.push({
-            name: person.name, date: dc.dKey, store: works?.store || plan?.store || person.store,
-            plan: planText, works: worksText,
-            note: `매장근무계획상 ${planText || '공란'} [${planStd.label}] / 웍스스케줄상 ${worksText || '공란'} [${worksStd.label}]`,
-          });
+        if (!planText) continue;
+        if (hasEducation(planText)) continue;
+        const shift = extractPlanShift(planText);
+        if (planText.includes('근무') && !isOffLike(planText) && !shift) {
+          mismatchRows.push({ name: person.name, date: dc.dKey, store: effectiveStoreFor(person, dc.dKey, transfersByName) || plan?.store || person.store, plan: planText, works: '', note: '매장근무계획 근무값이나 A/B/C 조 확인 불가' });
+        }
+        if (isOffLike(planText) && hasIn) {
+          mismatchRows.push({ name: person.name, date: dc.dKey, store: rec.store || effectiveStoreFor(person, dc.dKey, transfersByName), plan: planText, works: '', note: '매장근무계획상 휴무/연차/휴가류이나 출근 기록 있음' });
         }
       }
     }
 
-    // MX 지각/근태 미입력: 반드시 유효 근무조인 경우만 감점. 휴무/대체휴무/보상휴가/연차/교육은 제외.
+    // MX 지각/근태 미입력: 매장근무계획관리의 근무A/B/C 기준. 특별 근무일은 지각 제외.
     for (const person of allPeople) {
       if (person.group !== 'MX') continue;
-      for (const dc of worksDateCols) {
+      for (const dc of planDayCols) {
         if (dc.dKey > baseDateKey) continue;
-        const works = worksByNameDate.get(`${person.name}|${dc.dKey}`);
         const plan = planByNameDate.get(`${person.name}|${dc.dKey}`);
-        const worksText = works?.value || '';
         const planText = plan?.value || '';
-        const isRotation = hasRotation(worksText);
-        if (!worksText || hasEducation(worksText)) continue;
-        // 순환 문구가 들어간 날은 웍스 값이 어떤 표현이든 매장근무계획 근무A/B/C를 기준으로 처리한다.
-        // 일반 근무일만 휴무/대체/보상/연차 등 제외값을 웍스 기준으로 제외한다.
-        if (!isRotation && isOffLike(worksText)) continue;
-        let basis = '웍스스케줄';
-        let shift = extractWorksShift(worksText);
-        let scheduleText = worksText;
-        if (isRotation) {
-          basis = '매장근무계획관리(순환)';
-          if (hasEducation(planText) || isOffLike(planText)) continue;
-          shift = extractPlanShift(planText);
-          scheduleText = planText || worksText;
-        }
-        if (!shift) {
-          if (isRotation) mismatchRows.push({ name: person.name, date: dc.dKey, store: works?.store || plan?.store || person.store, plan: planText, works: worksText, note: '순환근무이나 매장근무계획에서 근무A/B/C 조 확인 불가' });
-          continue;
-        }
+        if (!planText || hasEducation(planText) || isOffLike(planText)) continue;
+        const shift = extractPlanShift(planText);
+        if (!shift) continue;
         const rec = attendanceByNameDate.get(`${person.name}|${dc.dKey}`);
-        const baseStore = works?.store || plan?.store || person.store;
+        const baseStore = effectiveStoreFor(person, dc.dKey, transfersByName) || plan?.store || person.store;
         if (!rec || rec.firstIn === null) {
-          const row = { group: 'MX', name: person.name, date: dc.dKey, store: baseStore, basis, schedule: scheduleText, reason: '근무 예정이나 출근기록 없음', score: -3 };
+          const row = { group: 'MX', name: person.name, date: dc.dKey, store: baseStore, basis: '매장근무계획관리', schedule: planText, reason: '근무 예정이나 출근기록 없음', score: -3 };
           noAttendanceRows.push(row); exceptionRows.push(toExceptionRow(row, '근태미입력'));
           continue;
         }
+        // 본인 매장이 아닌 곳에서 출근한 날은 특별 근무로만 기록하고 지각 처리하지 않는다.
+        if (specialWorkMap.has(`${person.name}|${dc.dKey}`)) continue;
         const attendStore = rec.store || baseStore;
         let standard = workHours.get(attendStore)?.[shift];
         let standardStore = attendStore;
         if (standard === null || standard === undefined) { standard = workHours.get(baseStore)?.[shift]; standardStore = baseStore; }
-        if (standard === null || standard === undefined) { standard = workHours.get(person.store)?.[shift]; standardStore = person.store; }
+        if (standard === null || standard === undefined) { const effStore = effectiveStoreFor(person, dc.dKey, transfersByName) || person.store; standard = workHours.get(effStore)?.[shift]; standardStore = effStore; }
         if (standard === null || standard === undefined) {
-          lateRows.push({ group: 'MX', name: person.name, date: dc.dKey, store: attendStore, standardStore: standardStore || '', shift, basis, schedule: scheduleText, standardTime: '기준없음', actualTime: minutesToHHMM(rec.firstIn), lateMinutes: '', lateType: '기준시간없음', rawScore: 0 });
+          lateRows.push({ group: 'MX', name: person.name, date: dc.dKey, store: attendStore, standardStore: standardStore || '', shift, basis: '매장근무계획관리', schedule: planText, standardTime: '기준없음', actualTime: minutesToHHMM(rec.firstIn), lateMinutes: '', lateType: '기준시간없음', rawScore: 0 });
           continue;
         }
         if (rec.firstIn >= standard) {
           const lateMinutes = rec.firstIn - standard;
           const lateType = lateMinutes <= 10 ? '10분 이내' : lateMinutes < 60 ? '11~59분' : '60분 이상';
           const rawScore = lateType === '60분 이상' ? -2 : -1;
-          const row = { group: 'MX', name: person.name, date: dc.dKey, store: attendStore, standardStore, shift, basis, schedule: scheduleText, standardTime: minutesToHHMM(standard), actualTime: minutesToHHMM(rec.firstIn), lateMinutes, lateType, rawScore };
+          const row = { group: 'MX', name: person.name, date: dc.dKey, store: attendStore, standardStore, shift, basis: '매장근무계획관리', schedule: planText, standardTime: minutesToHHMM(standard), actualTime: minutesToHHMM(rec.firstIn), lateMinutes, lateType, rawScore };
           lateRows.push(row); exceptionRows.push(toExceptionRow(row, '지각'));
         }
       }
@@ -449,9 +528,8 @@
     const settings = getAllowanceSettings(month);
     const annualAllowanceRows = buildAnnualAllowanceRows(allPeople, annualLeaveMap, leaveRows, year, month, { ...settings, payHistory });
     const autoSummary = buildSummary(allPeople, lateRows, noAttendanceRows, noCheckoutRows);
-    return { year, month, baseDate: baseDateKey, people: allPeople, lateRows, noAttendanceRows, noCheckoutRows, mismatchRows, ceRows, exceptionRows, autoSummary, worksReadRows, planReadRows, leaveRows, currentLeaveRows, restExcessRows, annualAllowanceRows, payHistory, allowanceSettings: settings };
+    return { year, month, baseDate: baseDateKey, people: allPeople, lateRows, noAttendanceRows, noCheckoutRows, mismatchRows, ceRows, exceptionRows, autoSummary, worksReadRows: [], planReadRows, specialWorkRows, transferRules, leaveRows, currentLeaveRows, restExcessRows, annualAllowanceRows, payHistory, allowanceSettings: settings };
   }
-
 
   function numValue(value) {
     if (value === null || value === undefined) return null;
@@ -1173,16 +1251,17 @@
     addNoAttendanceSheet(wb, result.noAttendanceRows.filter(x => x.group === 'MX'), 'MX 근태 미입력');
     addNoCheckoutSheet(wb, result.noCheckoutRows.filter(x => x.group === 'MX'), 'MX 퇴근 미입력');
     addMxExceptionSheet(wb, result.exceptionRows.filter(x => x.group === 'MX'));
+    addSpecialWorkSheet(wb, result.specialWorkRows || []);
+    addTransferRulesSheet(wb, result.transferRules || []);
     addAnnualAllowanceSheet(wb, result);
     addMxLeaveAccumSheet(wb, result.leaveRows.filter(x => x.group === 'MX'));
     addAllowancePaymentDbSheet(wb, result);
     addLeaveUsageDbSheet(wb, result.leaveRows.filter(x => x.group === 'MX'));
     addRestExcessSheet(wb, result.restExcessRows);
-    addReadWorksSheet(wb, result.worksReadRows, result.baseDate);
     addReadPlanSheet(wb, result.planReadRows, result.baseDate);
     addMismatchSheet(wb, result.mismatchRows);
 
-    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v16.xlsx`;
+    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_v18.xlsx`;
     XLSX.writeFile(wb, fileName, { bookType: 'xlsx', cellStyles: true });
   }
 
@@ -1232,8 +1311,8 @@
       ['구분', '기준', '감점/처리'],
       ['업로드 파일', '인력 및 점포별 근무시간 / 매장근무계획관리 / 웍스스케줄 / 근태관리', '엑셀 4개 업로드 후 분석 실행'],
       ['CE 기준', '매장근무계획관리에서 “근무” 포함일만 확인', '출근기록 없으면 CE_근태미입력에 표시'],
-      ['MX 기본 기준', '웍스스케줄 A/B/C조 기준', '영업시간DB의 점포별 조 시간 사용'],
-      ['MX 순환 기준', '웍스스케줄 값 어디든 “순환” 글자 포함', '매장근무계획관리의 근무A/B/C 기준 사용'],
+      ['MX 기본 기준', '매장근무계획관리 근무A/B/C 기준', '영업시간DB의 점포별 조 시간 사용'],
+      ['MX 순환 기준', '웍스스케줄 미사용', '매장근무계획관리 기준으로 지각/근태미입력 판정'],
       ['교육 기준', '웍스스케줄에 “교육” 포함', '지각/근태미입력 판정 제외'],
       ['제외 기준', '휴무/휴일/연차/휴가/공가/대체/보상/DIDA/예비군/병가/경조', '근태미입력 감점 제외'],
       ['지각 판정', '기준시간과 같은 시간에 출근 찍어도 지각', '예: 10:00 기준 / 10:00 출근 = 지각 0분'],
@@ -1262,7 +1341,7 @@
       ['분석월', `${result.year}-${String(result.month).padStart(2, '0')}`, '판정기준일', result.baseDate, 'MX 인원', mxPeople.length, '소명제외', '', '최종 총감점', '', '', '', ''],
       ['지각 대상 인원', '', '근태 미입력 건수', '', '퇴근 미입력 건수', '', '감점 대상자', '', '관리 기준', '소명 입력 시 MX 최종 요약 자동 반영', '', '', ''],
       ['', '', '', '', '', '', '', '', '', '', '', '', ''],
-      ['운영 기준', '① 웍스스케줄에 “순환” 포함 시 매장근무계획의 근무A/B/C 기준  ② 교육은 제외  ③ 10분 이내 지각은 최종 지각 총횟수 3회 이상 시 감점', '', '', '', '', '', '', '', '', '', '', ''],
+      ['운영 기준', '① 매장근무계획의 근무A/B/C 기준  ② 본인 매장이 아닌 출근지점은 특별 근무 처리 및 지각 제외  ③ 교육은 제외  ④ 10분 이내 지각은 최종 지각 총횟수 3회 이상 시 감점', '', '', '', '', '', '', '', '', '', '', ''],
       ['감점 기준', '11~59분: 1회당 -1점 / 60분 이상: 1회당 -2점 / 근태 미입력: 1회당 -3점 / 퇴근 미입력: 3회부터 감점', '', '', '', '', '', '', '', '', '', '', ''],
       ['', '', '', '', '', '', '', '', '', '', '', '', ''],
       ['구분', '이름', '점포', '10분 이내 지각', '11~59분 지각', '60분 이상 지각', '지각 총횟수', '지각감점', '근태미입력', '근태감점', '퇴근미입력', '퇴근감점', '총감점'],
@@ -1391,6 +1470,33 @@
   }
 
 
+
+
+  function addTransferRulesSheet(wb, items) {
+    const rows = [['라인', '이름', '이전점포', '종료일', '이후점포', '시작일', '상태', '입력원문', '비고']];
+    if (!items || !items.length) {
+      rows.push(['예시', '강문흠', '양재점', '2026-09-15', '광명점', '2026-09-16', '참고', '강문흠, 양재점, 2026-09-15, 광명점, 2026-09-16', '인사이동 입력 시 이 기준으로 날짜별 기준점포를 변경합니다.']);
+    } else {
+      for (const x of items) rows.push([x.lineNo, x.name, x.beforeStore || '', x.untilDate || '', x.afterStore || '', x.startDate || '', x.status || '', x.raw || '', x.status === '정상' ? '시작일 이후 이후점포 기준 / 시작일 전 이전점포 기준' : '입력 형식 확인 필요']);
+    }
+    const ws = addSheet(wb, '인사이동 기준', rows, { widths: [8, 12, 16, 12, 16, 12, 14, 58, 42] });
+    for (let r = 2; r <= rows.length; r++) {
+      const statusCell = ws[`G${r}`];
+      if (statusCell) statusCell.s = { ...bodyStyle(r), fill: { fgColor: { rgb: clean(statusCell.v).includes('정상') ? 'EAF6EF' : 'FFF4E6' } }, font: { color: { rgb: clean(statusCell.v).includes('정상') ? '0B6B43' : '92400E' }, bold: true, sz: 10 } };
+    }
+  }
+
+  function addSpecialWorkSheet(wb, items) {
+    const rows = [['구분', '이름', '날짜', '기준점포', '출근지점', '매장근무계획점포', '매장근무계획값', '조', '실제출근', '실제퇴근', '처리내용']];
+    for (const x of items) rows.push([x.group, x.name, x.date, x.homeStore, x.attendStore, x.planStore || '', x.planValue || '', x.shift || '', x.checkIn || '', x.checkOut || '', x.note || '특별 근무 / 지각 제외']);
+    const ws = addSheet(wb, '특별 근무', rows, { widths: [8, 12, 12, 16, 16, 18, 20, 8, 10, 10, 44] });
+    for (let r = 2; r <= rows.length; r++) {
+      const storeCell = ws[`E${r}`];
+      if (storeCell) storeCell.s = { ...bodyStyle(r), fill: { fgColor: { rgb: 'EAF6EF' } }, font: { color: { rgb: '0B6B43' }, bold: true, sz: 10 } };
+      const noteCell = ws[`K${r}`];
+      if (noteCell) noteCell.s = { ...bodyStyle(r), fill: { fgColor: { rgb: 'FFF4E6' } }, font: { color: { rgb: '92400E' }, bold: true, sz: 10 } };
+    }
+  }
 
   function addAnnualAllowanceSheet(wb, result) {
     const monthThreshold = result.allowanceSettings?.annualPayThreshold ?? Math.max(0, 13 - result.month);
@@ -1530,8 +1636,8 @@
       ['60분 이상 지각', '횟수 상관없이 감점', '1회당 -2점'],
       ['근태 미입력', '근무 예정이나 출근 기록 없음', '1회당 -3점'],
       ['퇴근 미입력', '출근은 있으나 정상 퇴근시간 없음', '3회부터 -1점, 이후 1회 추가마다 -1점'],
-      ['MX 기본 기준', '웍스스케줄 A/B/C조 기준', '영업시간DB의 점포별 조 시간 사용'],
-      ['MX 순환 기준', '웍스스케줄 값 어디든 “순환” 글자 포함', '매장근무계획관리의 근무A/B/C 기준 사용'],
+      ['MX 기본 기준', '매장근무계획관리 근무A/B/C 기준', '영업시간DB의 점포별 조 시간 사용'],
+      ['MX 순환 기준', '웍스스케줄 미사용', '매장근무계획관리 기준으로 지각/근태미입력 판정'],
       ['제외 기준', '휴무/대체휴무/보상휴가/연차/공가/DIDA/예비군/교육', '근태 미입력 감점 제외'],
       ['CE 기준', '매장근무계획관리에 “근무” 포함, 단 휴무성 문구 제외', '출근 여부만 확인'],
       ['소명 처리', '소명처리 시트에서 처리결과 또는 처리사유에 입력해도 적용됨. 적용여부는 공란 가능', '정시인정/출근인정/퇴근인정/교육제외/기타제외 또는 인정/제외/정시 포함 문구 시 최종요약에서 제외. 적용여부=미적용이면 제외 안 함'],

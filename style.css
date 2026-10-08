@@ -152,7 +152,7 @@ h1 { position: relative; margin: 0; font-size: 48px; line-height: 1.04; letter-s
 .upload small { color: var(--muted); line-height: 1.35; }
 .upload .file-name { grid-column: 1 / -1; display: block; margin-top: 8px; padding: 9px 11px; border-radius: 12px; background: #effaf4; color: #0b6b43; font-size: 12px; font-style: normal; font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .upload input { grid-column: 1 / -1; margin-top: 4px; }
-input[type="file"], input[type="month"], input[type="date"] {
+input[type="file"], input[type="month"], input[type="date"], input[type="number"], textarea {
   width: 100%;
   padding: 11px 12px;
   border: 1px solid var(--line);
@@ -205,3 +205,10 @@ button.secondary { background: #5b6b63; box-shadow: none; }
   .hero-copy { padding: 28px; }
   .actions { flex-direction: column; }
 }
+
+.transfer-layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(260px, .6fr); gap: 14px; align-items: stretch; }
+.transfer-card textarea { min-height: 132px; resize: vertical; line-height: 1.6; }
+.transfer-help { border: 1px solid var(--line); border-radius: 20px; padding: 18px; background: linear-gradient(180deg, #ffffff 0%, #f3fbf6 100%); color: var(--muted); }
+.transfer-help b { display:block; color: var(--green-dark); font-size: 15px; margin-bottom: 10px; }
+.transfer-help ul { margin: 0; padding-left: 18px; line-height: 1.7; font-size: 13px; font-weight: 750; }
+@media (max-width: 760px) { .transfer-layout { grid-template-columns: 1fr; } }

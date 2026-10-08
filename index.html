@@ -24,17 +24,17 @@
       <div class="hero-copy">
         <p class="eyebrow">ZENIEL Workforce Report</p>
         <h1>근태 관리<br />자동 분석기</h1>
-        <p class="desc">엑셀 4개만 업로드하면 CE/MX 근태, 매장근무계획 기준 연차 사용, 주차별 휴무 초과, MX 연차수당 지급 여부까지 보고용 엑셀로 정리합니다.</p>
+        <p class="desc">엑셀 3개만 업로드하면 CE/MX 근태, 특별 근무, 인사이동 기준, 매장근무계획 기준 연차 사용, 주차별 휴무 초과, MX 연차수당 지급 여부까지 보고용 엑셀로 정리합니다.</p>
         <div class="hero-kpis">
           <div><b>DB</b><span>누적 반영</span></div>
           <div><b>자동</b><span>소명 반영</span></div>
-          <div><b>순환</b><span>매장계획 기준</span></div>
+          <div><b>이동</b><span>점포변경 반영</span></div>
         </div>
       </div>
       <aside class="version-card">
         <span class="version-label">CURRENT VERSION</span>
-        <strong>v16</strong>
-        <small>지급기준 입력 + 연차 지급/사용 DB 누적 반영</small>
+        <strong>v18</strong>
+        <small>웍스 제거 + 특별근무 + 인사이동 기준</small>
       </aside>
     </section>
 
@@ -60,13 +60,6 @@
         </label>
         <label class="upload">
           <b>03</b>
-          <span>웍스스케줄.xlsx</span>
-          <small>MX A/B/C조 및 휴무 기준</small>
-          <em class="file-name">파일 선택 전</em>
-          <input id="fileWorks" type="file" accept=".xlsx,.xls" />
-        </label>
-        <label class="upload">
-          <b>04</b>
           <span>근태관리.xlsx</span>
           <small>출근·퇴근 기록 기준</small>
           <em class="file-name">파일 선택 전</em>
@@ -84,7 +77,7 @@
         <div class="field-card">
           <label for="monthInput">분석 월</label>
           <input id="monthInput" type="month" />
-          <small>비워두면 웍스스케줄 날짜 헤더 기준으로 자동 추정합니다.</small>
+          <small>비워두면 근태관리 파일에서 가장 많이 등장하는 연월로 자동 추정합니다.</small>
         </div>
         <div class="field-card">
           <label for="baseDateInput">판정 기준일</label>
@@ -104,12 +97,34 @@
       </div>
     </section>
 
+    <section class="panel compact transfer-panel">
+      <div class="section-head">
+        <p>OPTION</p>
+        <h2>인사 이동 기준 입력</h2>
+      </div>
+      <div class="transfer-layout">
+        <div class="field-card transfer-card">
+          <label for="transferInput">중간 점포 변경자</label>
+          <textarea id="transferInput" rows="5" placeholder="예시 1) 강문흠, 양재점, 2026-09-15, 광명점, 2026-09-16&#10;예시 2) 강문흠 / 2026-09-16 / 광명점&#10;예시 3) 강문흠 2026-09-16 광명점"></textarea>
+          <small>한 줄에 한 명씩 입력합니다. 이전점포와 종료일을 같이 쓰면 이동 전 기간도 정확히 잡고, 시작일 이후는 변경 점포를 본인 기준점포로 인식합니다.</small>
+        </div>
+        <div class="transfer-help">
+          <b>적용 방식</b>
+          <ul>
+            <li>시작일 이후에는 변경 점포를 본인 매장으로 처리</li>
+            <li>이동 전 점포를 입력하면 시작일 전까지 해당 점포 기준 적용</li>
+            <li>기준점포가 아닌 곳에서 출근 찍은 날은 특별 근무 처리 및 지각 제외</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
     <section class="actions">
       <button id="runBtn">근태 분석 실행</button>
       <button id="resetBtn" class="secondary">초기화</button>
     </section>
 
-    <section id="status" class="status">파일 4개를 업로드한 뒤 분석을 실행하세요.</section>
+    <section id="status" class="status">파일 3개를 업로드한 뒤 분석을 실행하세요.</section>
 
     <section class="panel guide">
       <div class="section-head">
@@ -123,16 +138,17 @@
         <span>MX 근태 미입력</span>
         <span>MX 퇴근 미입력</span>
         <span>MX 소명처리</span>
+        <span>특별 근무</span>
+        <span>인사이동 기준</span>
         <span>MX 연차 수당 확인</span>
         <span>MX 연차 사용 누적</span>
         <span>연차수당지급DB</span>
         <span>연차사용누적DB</span>
         <span>휴무 초과 확인</span>
-        <span>읽기 확인_웍스</span>
         <span>읽기 확인_매장계획</span>
         <span>스케줄 불일치</span>
       </div>
-      <p class="note"><b>MX 연차 수당 확인</b>은 25년 이전 입사자는 잔여연차 기준, 26년 입사자는 입사일 기준 월차 발생분으로 당월 수당 지급/미지급을 표시합니다. <b>연차수당지급DB</b>와 <b>연차사용누적DB</b>는 다음 달 인력DB에 넣어 누적 기준으로 사용할 수 있습니다.</p>
+      <p class="note"><b>특별 근무</b>는 날짜별 기준점포가 아닌 곳에서 출근을 찍은 경우 자동 기록되며 해당일은 지각 판정에서 제외됩니다. <b>인사 이동 기준</b>을 입력하면 이동일 전후 기준점포가 자동 반영됩니다. <b>MX 연차 수당 확인</b>은 25년 이전 입사자는 잔여연차 기준, 26년 입사자는 입사일 기준 월차 발생분으로 당월 수당 지급/미지급을 표시합니다. <b>연차수당지급DB</b>와 <b>연차사용누적DB</b>는 다음 달 인력DB에 넣어 누적 기준으로 사용할 수 있습니다.</p>
     </section>
   </main>
 
