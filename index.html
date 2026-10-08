@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ZENIEL 근태 분석 시스템 V2.0.1</title>
+  <title>ZENIEL 근태 분석 시스템 V2.0.2</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -40,7 +40,7 @@
           <span>MX / CE 통합 근태 · 연차 · 특별근무 자동 분석</span>
         </div>
         <div class="top-actions">
-          <div class="version-pill">V2.0.1</div>
+          <div class="version-pill">V2.0.2</div>
           <div class="today-card">
             <small>현재 버전</small>
             <b>Special Work · Transfer Rule</b>
@@ -153,18 +153,42 @@
             <p>STEP 03</p>
             <h2>인사 이동 기준 입력</h2>
           </div>
-          <span class="section-badge">Transfer Rule</span>
+          <span class="section-badge">Click Transfer Rule</span>
         </div>
-        <div class="transfer-layout">
+        <div class="transfer-layout picker-mode">
           <div class="field-card transfer-card">
-            <label for="transferInput">중간 점포 변경자</label>
-            <textarea id="transferInput" rows="6" placeholder="예시 1) 강문흠, 양재점, 2026-09-15, 광명점, 2026-09-16&#10;예시 2) 강문흠 / 2026-09-16 / 광명점&#10;예시 3) 강문흠 2026-09-16 광명점"></textarea>
-            <small>한 줄에 한 명씩 입력합니다. 시작일 이후에는 변경 점포를 본인 기준점포로 인식합니다.</small>
+            <label for="transferPerson">인사 이동 대상자</label>
+            <select id="transferPerson">
+              <option value="">인력DB 업로드 후 직원 선택</option>
+            </select>
+            <small>직원명을 선택하면 인력DB 기준 현재 점포가 자동 표시됩니다.</small>
+
+            <div class="transfer-grid">
+              <div>
+                <label for="transferCurrentStore">인력DB 기준 점포</label>
+                <input id="transferCurrentStore" type="text" readonly placeholder="직원 선택 시 자동 표시" />
+              </div>
+              <div>
+                <label for="transferStartDate">변경 시작일</label>
+                <input id="transferStartDate" type="date" />
+              </div>
+              <div>
+                <label for="transferAfterStore">변경 후 점포</label>
+                <select id="transferAfterStore">
+                  <option value="">점포 선택</option>
+                </select>
+              </div>
+              <div class="transfer-button-wrap">
+                <button id="addTransferBtn" type="button" class="mini-action">인사 이동 추가</button>
+              </div>
+            </div>
+            <textarea id="transferInput" rows="3" readonly hidden></textarea>
           </div>
           <div class="transfer-help">
-            <b>적용 방식</b>
+            <b>등록된 인사 이동</b>
+            <div id="transferPreview" class="transfer-preview empty">아직 등록된 인사 이동 기준이 없습니다.</div>
             <ul>
-              <li>시작일 이후 변경 점포를 본인 매장으로 처리</li>
+              <li>등록 후 시작일 이후 변경 점포를 본인 매장으로 처리</li>
               <li>기준점포가 아닌 곳에서 출근 시 특별 근무 기록</li>
               <li>특별 근무일은 지각 여부와 관계없이 지각 제외</li>
             </ul>
@@ -227,7 +251,7 @@
             </tbody>
           </table>
         </div>
-        <p class="note"><b>V2.0.1</b>은 웍스스케줄 없이 매장근무계획관리 기준으로 근태를 판정합니다. 기준점포가 아닌 출근지점은 <b>특별 근무</b>로 분리하고, 해당일은 지각에서 제외합니다.</p>
+        <p class="note"><b>V2.0.2</b>은 웍스스케줄 없이 매장근무계획관리 기준으로 근태를 판정합니다. 기준점포가 아닌 출근지점은 <b>특별 근무</b>로 분리하고, 해당일은 지각에서 제외합니다.</p>
       </section>
     </main>
   </div>

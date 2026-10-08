@@ -9,17 +9,23 @@
     attendance: $('fileAttendance'),
   };
 
+  let transferPeople = [];
+  let transferStores = [];
+
   Object.values(fileInputs).forEach((input) => {
-    input.addEventListener('change', () => {
+    input.addEventListener('change', async () => {
       const box = input.closest('.upload');
       const nameEl = box?.querySelector('.file-name');
       if (nameEl) nameEl.textContent = input.files?.[0]?.name || '파일 선택 전';
       box?.classList.toggle('selected', !!input.files?.[0]);
+      if (input === fileInputs.master && input.files?.[0]) await loadTransferPickerFromMaster(input.files[0]);
     });
   });
 
   $('runBtn').addEventListener('click', runAnalysis);
   $('resetBtn').addEventListener('click', () => location.reload());
+  $('transferPerson')?.addEventListener('change', updateTransferCurrentStore);
+  $('addTransferBtn')?.addEventListener('click', addTransferRuleFromPicker);
 
   function setStatus(message, type = '') {
     statusEl.className = `status ${type}`.trim();
@@ -226,6 +232,98 @@
     return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: false });
   }
 
+  async function loadTransferPickerFromMaster(file) {
+    try {
+      const wb = await readWorkbook(file);
+      const peopleRows = sheetRows(wb, ['인력DB']);
+      const hourRows = sheetRows(wb, ['영업시간DB']);
+      transferPeople = parsePeople(peopleRows).filter(p => p.group === 'MX').sort((a, b) => a.store.localeCompare(b.store, 'ko') || a.name.localeCompare(b.name, 'ko'));
+      const hourStores = Array.from(parseWorkHours(hourRows).keys());
+      transferStores = Array.from(new Set([...hourStores, ...transferPeople.map(p => p.store).filter(Boolean)])).sort((a, b) => a.localeCompare(b, 'ko'));
+      populateTransferPicker();
+    } catch (err) {
+      console.warn('인사 이동 선택 목록 생성 실패', err);
+      const personSel = $('transferPerson');
+      if (personSel) personSel.innerHTML = '<option value="">인력DB 읽기 실패</option>';
+    }
+  }
+
+  function populateTransferPicker() {
+    const personSel = $('transferPerson');
+    const storeSel = $('transferAfterStore');
+    if (!personSel || !storeSel) return;
+    personSel.innerHTML = '<option value="">직원 선택</option>' + transferPeople.map((p, idx) => `<option value="${idx}">${escapeHtml(p.name)} · ${escapeHtml(p.store || '-')}</option>`).join('');
+    storeSel.innerHTML = '<option value="">변경 후 점포 선택</option>' + transferStores.map(store => `<option value="${escapeHtml(store)}">${escapeHtml(store)}</option>`).join('');
+    updateTransferCurrentStore();
+    renderTransferPreview();
+  }
+
+  function updateTransferCurrentStore() {
+    const personSel = $('transferPerson');
+    const current = $('transferCurrentStore');
+    const idx = Number(personSel?.value ?? -1);
+    const person = Number.isInteger(idx) && idx >= 0 ? transferPeople[idx] : null;
+    if (current) current.value = person?.store || '';
+  }
+
+  function addDaysToDateKey(dKey, diff) {
+    const d = parseDate(dKey);
+    if (!d) return '';
+    d.setDate(d.getDate() + diff);
+    return dateKey(d);
+  }
+
+  function addTransferRuleFromPicker() {
+    const personSel = $('transferPerson');
+    const storeSel = $('transferAfterStore');
+    const startInput = $('transferStartDate');
+    const textarea = $('transferInput');
+    const idx = Number(personSel?.value ?? -1);
+    const person = Number.isInteger(idx) && idx >= 0 ? transferPeople[idx] : null;
+    const startDate = clean(startInput?.value);
+    const afterStore = normalizeStore(storeSel?.value);
+    if (!person || !startDate || !afterStore) {
+      setStatus('인사 이동 등록은 직원, 변경 시작일, 변경 후 점포를 모두 선택해야 합니다.', 'error');
+      return;
+    }
+    const beforeStore = normalizeStore(person.store || '');
+    const untilDate = addDaysToDateKey(startDate, -1);
+    const line = [person.name, beforeStore, untilDate, afterStore, startDate].join(', ');
+    const existing = clean(textarea?.value).split(/\n+/).map(clean).filter(Boolean);
+    if (!existing.includes(line)) existing.push(line);
+    if (textarea) textarea.value = existing.join('\n');
+    renderTransferPreview();
+    setStatus(`${person.name} 인사 이동 기준이 추가됐습니다. 시작일 이후 ${afterStore} 기준으로 판정합니다.`, 'ok');
+  }
+
+  function renderTransferPreview() {
+    const preview = $('transferPreview');
+    const textarea = $('transferInput');
+    if (!preview) return;
+    const lines = clean(textarea?.value).split(/\n+/).map(clean).filter(Boolean);
+    if (!lines.length) {
+      preview.className = 'transfer-preview empty';
+      preview.innerHTML = '아직 등록된 인사 이동 기준이 없습니다.';
+      return;
+    }
+    preview.className = 'transfer-preview';
+    preview.innerHTML = lines.map((line, idx) => {
+      const rule = parseTransferRules(line)[0] || {};
+      const label = rule.status === '정상'
+        ? `${escapeHtml(rule.name)} <b>${escapeHtml(rule.startDate)}</b>부터 <b>${escapeHtml(rule.afterStore)}</b>`
+        : escapeHtml(line);
+      return `<div class="transfer-chip"><span>${idx + 1}. ${label}</span><button type="button" data-transfer-remove="${idx}">삭제</button></div>`;
+    }).join('');
+    preview.querySelectorAll('[data-transfer-remove]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const i = Number(btn.dataset.transferRemove);
+        const next = lines.filter((_, idx) => idx !== i);
+        if (textarea) textarea.value = next.join('\n');
+        renderTransferPreview();
+      });
+    });
+  }
+
   async function runAnalysis() {
     try {
       const missingFiles = Object.entries(fileInputs).filter(([, el]) => !el.files || !el.files[0]).map(([key]) => key);
@@ -246,7 +344,7 @@
       const transferText = $('transferInput')?.value || '';
       const result = analyze({ peopleRows, hourRows, planRows, attendanceRows, annualRows, payHistoryRows, leaveHistoryRows, transferText });
       makeWorkbook(result);
-      setStatus(`분석 완료(V2.0.1): MX 지각 ${result.lateRows.length}건, 특별 근무 ${result.specialWorkRows.length}건, 근태 미입력 ${result.noAttendanceRows.length}건, 퇴근 미입력 ${result.noCheckoutRows.length}건.<br>결과 엑셀이 다운로드됩니다.`, 'ok');
+      setStatus(`분석 완료(V2.0.2): MX 지각 ${result.lateRows.length}건, 특별 근무 ${result.specialWorkRows.length}건, 근태 미입력 ${result.noAttendanceRows.length}건, 퇴근 미입력 ${result.noCheckoutRows.length}건.<br>결과 엑셀이 다운로드됩니다.`, 'ok');
     } catch (err) {
       console.error(err);
       setStatus(`오류가 발생했습니다.<br><b>${escapeHtml(err.message || err)}</b><br>파일 양식이나 시트명이 바뀌었는지 확인하세요.`, 'error');
@@ -1261,7 +1359,7 @@
     addReadPlanSheet(wb, result.planReadRows, result.baseDate);
     addMismatchSheet(wb, result.mismatchRows);
 
-    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_V2.0.1.xlsx`;
+    const fileName = `근태분석결과_${result.year}${String(result.month).padStart(2, '0')}_${result.baseDate.replace(/-/g, '')}_V2.0.2.xlsx`;
     XLSX.writeFile(wb, fileName, { bookType: 'xlsx', cellStyles: true });
   }
 
@@ -1383,10 +1481,28 @@
   }
 
   function addMxExceptionSheet(wb, items) {
-    const rows = [['구분', '이름', '날짜', '자동판정', '지각구분', '지각분', '구간점수(참고)', '처리결과', '처리사유', '승인자', '최종제외', '비고']];
+    const rows = [
+      ['MX 소명처리 작성 방법', '', '', '', '', '', '', '', '', '', '', ''],
+      ['처리결과 칸에 정시인정 / 출근인정 / 퇴근인정 / 교육제외 / 기타제외 중 하나를 입력하면 최종요약에서 제외됩니다.', '', '', '', '', '', '', '', '', '', '', ''],
+      ['문장으로 입력해도 인정·제외·정시 문구가 들어가면 제외 처리됩니다. 예: 관리자 확인 정시인정, 시스템 오류로 출근인정. 적용하지 않을 건은 비워두면 됩니다.', '', '', '', '', '', '', '', '', '', '', ''],
+      ['', '', '', '', '', '', '', '', '', '', '', ''],
+      ['구분', '이름', '날짜', '자동판정', '지각구분', '지각분', '구간점수(참고)', '처리결과', '처리사유', '승인자', '최종제외', '비고']
+    ];
     for (const x of items) rows.push([x.kind, x.name, x.date, x.autoJudgement, x.lateType, x.lateMinutes, x.baseScore, x.result, x.reason, x.approver, '', x.memo]);
     const ws = addSheet(wb, 'MX 소명처리', rows, { widths: [12, 13, 12, 36, 12, 8, 13, 18, 38, 12, 10, 28] });
-    for (let r = 2; r <= rows.length; r++) {
+    ws['!merges'] = (ws['!merges'] || []).concat([
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 11 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 11 } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 11 } },
+    ]);
+    ws['A1'].s = { font: { bold: true, color: { rgb: '0B6B43' }, sz: 15 }, fill: { fgColor: { rgb: 'EAF6EF' } }, alignment: { horizontal: 'left', vertical: 'center' } };
+    ws['A2'].s = { font: { bold: true, color: { rgb: '14532D' }, sz: 11 }, fill: { fgColor: { rgb: 'F4FBF7' } }, alignment: { horizontal: 'left', vertical: 'center' } };
+    ws['A3'].s = { font: { color: { rgb: '475569' }, sz: 10 }, fill: { fgColor: { rgb: 'F8FAFC' } }, alignment: { horizontal: 'left', vertical: 'center', wrapText: true } };
+    for (let c = 0; c < 12; c++) {
+      const cell = XLSX.utils.encode_cell({ r: 4, c });
+      if (ws[cell]) ws[cell].s = headerStyle();
+    }
+    for (let r = 6; r <= rows.length; r++) {
       // 처리결과만 입력해도 적용. 처리결과/처리사유/승인자/비고 중 인정·제외·정시 문구가 있으면 제외.
       ws[`K${r}`] = { t: 's', f: `IF(OR(ISNUMBER(SEARCH("인정",$H${r}&$I${r}&$J${r}&$L${r})),ISNUMBER(SEARCH("제외",$H${r}&$I${r}&$J${r}&$L${r})),ISNUMBER(SEARCH("정시",$H${r}&$I${r}&$J${r}&$L${r}))),"제외","반영")`, s: bodyStyle(r) };
     }
@@ -1475,7 +1591,7 @@
   function addTransferRulesSheet(wb, items) {
     const rows = [['라인', '이름', '이전점포', '종료일', '이후점포', '시작일', '상태', '입력원문', '비고']];
     if (!items || !items.length) {
-      rows.push(['예시', '강문흠', '양재점', '2026-09-15', '광명점', '2026-09-16', '참고', '강문흠, 양재점, 2026-09-15, 광명점, 2026-09-16', '인사이동 입력 시 이 기준으로 날짜별 기준점포를 변경합니다.']);
+      rows.push(['-', '', '', '', '', '', '미등록', '', '인사이동 기준 없음']);
     } else {
       for (const x of items) rows.push([x.lineNo, x.name, x.beforeStore || '', x.untilDate || '', x.afterStore || '', x.startDate || '', x.status || '', x.raw || '', x.status === '정상' ? '시작일 이후 이후점포 기준 / 시작일 전 이전점포 기준' : '입력 형식 확인 필요']);
     }
