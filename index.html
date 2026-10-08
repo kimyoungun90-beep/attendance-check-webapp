@@ -3,154 +3,234 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ZENIEL 근태 관리 자동 분석기</title>
+  <title>ZENIEL 근태 분석 시스템 V2.0.1</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main class="wrap">
-    <header class="brand-bar">
-      <div class="brand">
-        <img src="data:image/png;base64,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" alt="ZENIEL" />
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="ZENIEL 근태 분석 메뉴">
+      <div class="side-logo">
+        <div class="logo-mark">Z</div>
         <div>
-          <strong>Attendance Management System</strong>
-          <span>Costco Samsung · MX / CE 근태 자동 분석</span>
+          <strong>ZENIEL</strong>
+          <span>Attendance System</span>
         </div>
       </div>
-      <div class="brand-badge">Local Excel Processing</div>
-    </header>
 
-    <section class="hero">
-      <div class="hero-copy">
-        <p class="eyebrow">ZENIEL Workforce Report</p>
-        <h1>근태 관리<br />자동 분석기</h1>
-        <p class="desc">엑셀 3개만 업로드하면 CE/MX 근태, 특별 근무, 인사이동 기준, 매장근무계획 기준 연차 사용, 주차별 휴무 초과, MX 연차수당 지급 여부까지 보고용 엑셀로 정리합니다.</p>
-        <div class="hero-kpis">
-          <div><b>DB</b><span>누적 반영</span></div>
-          <div><b>자동</b><span>소명 반영</span></div>
-          <div><b>이동</b><span>점포변경 반영</span></div>
-        </div>
-      </div>
-      <aside class="version-card">
-        <span class="version-label">CURRENT VERSION</span>
-        <strong>v18</strong>
-        <small>웍스 제거 + 특별근무 + 인사이동 기준</small>
-      </aside>
-    </section>
+      <nav class="side-nav">
+        <a class="active" href="#dashboard"><i>⌂</i><span>대시보드</span></a>
+        <a href="#upload"><i>⇧</i><span>파일 업로드</span></a>
+        <a href="#criteria"><i>◎</i><span>지급 기준</span></a>
+        <a href="#transfer"><i>⇄</i><span>인사 이동</span></a>
+        <a href="#output"><i>▦</i><span>생성 시트</span></a>
+      </nav>
 
-    <section class="panel upload-panel">
-      <div class="section-head">
-        <p>STEP 01</p>
-        <h2>분석 파일 업로드</h2>
+      <div class="side-card">
+        <p>Local Excel Processing</p>
+        <b>개인정보 파일은 서버에 저장하지 않고 브라우저에서 처리합니다.</b>
       </div>
-      <div class="upload-grid">
-        <label class="upload">
-          <b>01</b>
-          <span>인력 및 점포별 근무시간.xlsx</span>
-          <small>인력DB / 영업시간DB / 연차DB 기준</small>
-          <em class="file-name">파일 선택 전</em>
-          <input id="fileMaster" type="file" accept=".xlsx,.xls" />
-        </label>
-        <label class="upload">
-          <b>02</b>
-          <span>매장근무계획관리.xlsx</span>
-          <small>CE 근태 확인 / 순환 근무 기준</small>
-          <em class="file-name">파일 선택 전</em>
-          <input id="filePlan" type="file" accept=".xlsx,.xls" />
-        </label>
-        <label class="upload">
-          <b>03</b>
-          <span>근태관리.xlsx</span>
-          <small>출근·퇴근 기록 기준</small>
-          <em class="file-name">파일 선택 전</em>
-          <input id="fileAttendance" type="file" accept=".xlsx,.xls" />
-        </label>
-      </div>
-    </section>
+    </aside>
 
-    <section class="panel compact">
-      <div class="section-head">
-        <p>STEP 02</p>
-        <h2>분석 기준 선택</h2>
-      </div>
-      <div class="options">
-        <div class="field-card">
-          <label for="monthInput">분석 월</label>
-          <input id="monthInput" type="month" />
-          <small>비워두면 근태관리 파일에서 가장 많이 등장하는 연월로 자동 추정합니다.</small>
+    <main class="main" id="dashboard">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">ZENIEL Workforce Report</p>
+          <h1>ZENIEL 근태 분석 시스템</h1>
+          <span>MX / CE 통합 근태 · 연차 · 특별근무 자동 분석</span>
         </div>
-        <div class="field-card">
-          <label for="baseDateInput">판정 기준일</label>
-          <input id="baseDateInput" type="date" />
-          <small>비워두면 근태관리 파일의 마지막 근무일까지만 판정합니다.</small>
+        <div class="top-actions">
+          <div class="version-pill">V2.0.1</div>
+          <div class="today-card">
+            <small>현재 버전</small>
+            <b>Special Work · Transfer Rule</b>
+          </div>
         </div>
-        <div class="field-card">
-          <label for="annualPayThreshold">일반 연차수당 지급 기준</label>
-          <input id="annualPayThreshold" type="number" min="0" step="0.5" placeholder="자동: 5월 8 / 6월 7 / 7월 6" />
-          <small>25년 이전 입사자 기준입니다. 차감 후 잔여가 이 기준 이상이면 당월 지급으로 계산합니다.</small>
-        </div>
-        <div class="field-card">
-          <label for="monthlyPayThreshold">26년 입사자 월차 지급 기준</label>
-          <input id="monthlyPayThreshold" type="number" min="0" step="0.5" value="1" />
-          <small>26년 입사자는 월차 발생분 기준입니다. 발생 월차 잔여가 이 기준 이상이면 지급합니다.</small>
-        </div>
-      </div>
-    </section>
+      </header>
 
-    <section class="panel compact transfer-panel">
-      <div class="section-head">
-        <p>OPTION</p>
-        <h2>인사 이동 기준 입력</h2>
-      </div>
-      <div class="transfer-layout">
-        <div class="field-card transfer-card">
-          <label for="transferInput">중간 점포 변경자</label>
-          <textarea id="transferInput" rows="5" placeholder="예시 1) 강문흠, 양재점, 2026-09-15, 광명점, 2026-09-16&#10;예시 2) 강문흠 / 2026-09-16 / 광명점&#10;예시 3) 강문흠 2026-09-16 광명점"></textarea>
-          <small>한 줄에 한 명씩 입력합니다. 이전점포와 종료일을 같이 쓰면 이동 전 기간도 정확히 잡고, 시작일 이후는 변경 점포를 본인 기준점포로 인식합니다.</small>
+      <section class="hero-grid">
+        <article class="hero-card">
+          <div class="hero-content">
+            <p class="hero-label">Costco Samsung · Field Attendance</p>
+            <h2>엑셀 3개로 끝내는<br />근태·연차 통합 리포트</h2>
+            <p>인력DB, 매장근무계획, 근태관리 파일만 넣으면 지각, 근태 미입력, 퇴근 미입력, 특별 근무, 연차 수당 확인까지 보고용 엑셀로 정리합니다.</p>
+            <div class="hero-tags">
+              <span>웍스 제외</span>
+              <span>특별근무 지각 제외</span>
+              <span>인사이동 반영</span>
+              <span>연차 누적 DB</span>
+            </div>
+          </div>
+          <div class="hero-orb"><span>V2</span></div>
+        </article>
+
+        <article class="quick-status">
+          <p>분석 흐름</p>
+          <ol>
+            <li><b>01</b> 기준 파일 업로드</li>
+            <li><b>02</b> 분석 월·지급 기준 설정</li>
+            <li><b>03</b> 인사 이동자 입력</li>
+            <li><b>04</b> 결과 엑셀 다운로드</li>
+          </ol>
+        </article>
+      </section>
+
+      <section class="kpi-row" aria-label="핵심 기능 요약">
+        <div class="kpi-card mint"><small>판정 기준</small><strong>매장근무계획</strong><span>근무A/B/C 기준</span></div>
+        <div class="kpi-card blue"><small>예외 처리</small><strong>특별 근무</strong><span>타점 출근 시 지각 제외</span></div>
+        <div class="kpi-card amber"><small>연차 관리</small><strong>수당 확인</strong><span>일반/26년 입사자 분리</span></div>
+        <div class="kpi-card violet"><small>누적 관리</small><strong>DB 시트</strong><span>다음 달 기준 반영</span></div>
+      </section>
+
+      <section class="panel upload-panel" id="upload">
+        <div class="section-head">
+          <div>
+            <p>STEP 01</p>
+            <h2>분석 파일 업로드</h2>
+          </div>
+          <span class="section-badge">Required 3 Files</span>
         </div>
-        <div class="transfer-help">
-          <b>적용 방식</b>
-          <ul>
-            <li>시작일 이후에는 변경 점포를 본인 매장으로 처리</li>
-            <li>이동 전 점포를 입력하면 시작일 전까지 해당 점포 기준 적용</li>
-            <li>기준점포가 아닌 곳에서 출근 찍은 날은 특별 근무 처리 및 지각 제외</li>
-          </ul>
+        <div class="upload-grid three">
+          <label class="upload">
+            <b>01</b>
+            <span>인력 및 점포별 근무시간.xlsx</span>
+            <small>인력DB · 영업시간DB · 연차DB · 누적DB 기준</small>
+            <em class="file-name">파일 선택 전</em>
+            <input id="fileMaster" type="file" accept=".xlsx,.xls" />
+          </label>
+          <label class="upload">
+            <b>02</b>
+            <span>매장근무계획관리.xlsx</span>
+            <small>MX/CE 근무, 연차, 휴무, 교육 기준</small>
+            <em class="file-name">파일 선택 전</em>
+            <input id="filePlan" type="file" accept=".xlsx,.xls" />
+          </label>
+          <label class="upload">
+            <b>03</b>
+            <span>근태관리.xlsx</span>
+            <small>출근·퇴근 시간, 출근지점 기준</small>
+            <em class="file-name">파일 선택 전</em>
+            <input id="fileAttendance" type="file" accept=".xlsx,.xls" />
+          </label>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="actions">
-      <button id="runBtn">근태 분석 실행</button>
-      <button id="resetBtn" class="secondary">초기화</button>
-    </section>
+      <section class="panel" id="criteria">
+        <div class="section-head">
+          <div>
+            <p>STEP 02</p>
+            <h2>분석 기준 설정</h2>
+          </div>
+          <span class="section-badge">Optional</span>
+        </div>
+        <div class="options">
+          <div class="field-card">
+            <label for="monthInput">분석 월</label>
+            <input id="monthInput" type="month" />
+            <small>비워두면 근태관리 파일에서 가장 많이 등장하는 연월로 자동 추정합니다.</small>
+          </div>
+          <div class="field-card">
+            <label for="baseDateInput">판정 기준일</label>
+            <input id="baseDateInput" type="date" />
+            <small>비워두면 근태관리 파일의 마지막 근무일까지만 판정합니다.</small>
+          </div>
+          <div class="field-card">
+            <label for="annualPayThreshold">일반 연차수당 지급 기준</label>
+            <input id="annualPayThreshold" type="number" min="0" step="0.5" placeholder="자동: 5월 8 / 6월 7 / 7월 6" />
+            <small>25년 이전 입사자 기준입니다. 차감 후 잔여가 이 기준 이상이면 지급으로 계산합니다.</small>
+          </div>
+          <div class="field-card">
+            <label for="monthlyPayThreshold">26년 입사자 월차 지급 기준</label>
+            <input id="monthlyPayThreshold" type="number" min="0" step="0.5" value="1" />
+            <small>26년 입사자는 월차 발생분 기준입니다. 발생 월차 잔여가 이 기준 이상이면 지급합니다.</small>
+          </div>
+        </div>
+      </section>
 
-    <section id="status" class="status">파일 3개를 업로드한 뒤 분석을 실행하세요.</section>
+      <section class="panel transfer-panel" id="transfer">
+        <div class="section-head">
+          <div>
+            <p>STEP 03</p>
+            <h2>인사 이동 기준 입력</h2>
+          </div>
+          <span class="section-badge">Transfer Rule</span>
+        </div>
+        <div class="transfer-layout">
+          <div class="field-card transfer-card">
+            <label for="transferInput">중간 점포 변경자</label>
+            <textarea id="transferInput" rows="6" placeholder="예시 1) 강문흠, 양재점, 2026-09-15, 광명점, 2026-09-16&#10;예시 2) 강문흠 / 2026-09-16 / 광명점&#10;예시 3) 강문흠 2026-09-16 광명점"></textarea>
+            <small>한 줄에 한 명씩 입력합니다. 시작일 이후에는 변경 점포를 본인 기준점포로 인식합니다.</small>
+          </div>
+          <div class="transfer-help">
+            <b>적용 방식</b>
+            <ul>
+              <li>시작일 이후 변경 점포를 본인 매장으로 처리</li>
+              <li>기준점포가 아닌 곳에서 출근 시 특별 근무 기록</li>
+              <li>특별 근무일은 지각 여부와 관계없이 지각 제외</li>
+            </ul>
+          </div>
+        </div>
+      </section>
 
-    <section class="panel guide">
-      <div class="section-head">
-        <p>OUTPUT</p>
-        <h2>생성되는 시트</h2>
-      </div>
-      <div class="sheet-list">
-        <span>CE 근태 미입력</span>
-        <span>MX 최종 요약</span>
-        <span>MX 지각</span>
-        <span>MX 근태 미입력</span>
-        <span>MX 퇴근 미입력</span>
-        <span>MX 소명처리</span>
-        <span>특별 근무</span>
-        <span>인사이동 기준</span>
-        <span>MX 연차 수당 확인</span>
-        <span>MX 연차 사용 누적</span>
-        <span>연차수당지급DB</span>
-        <span>연차사용누적DB</span>
-        <span>휴무 초과 확인</span>
-        <span>읽기 확인_매장계획</span>
-        <span>스케줄 불일치</span>
-      </div>
-      <p class="note"><b>특별 근무</b>는 날짜별 기준점포가 아닌 곳에서 출근을 찍은 경우 자동 기록되며 해당일은 지각 판정에서 제외됩니다. <b>인사 이동 기준</b>을 입력하면 이동일 전후 기준점포가 자동 반영됩니다. <b>MX 연차 수당 확인</b>은 25년 이전 입사자는 잔여연차 기준, 26년 입사자는 입사일 기준 월차 발생분으로 당월 수당 지급/미지급을 표시합니다. <b>연차수당지급DB</b>와 <b>연차사용누적DB</b>는 다음 달 인력DB에 넣어 누적 기준으로 사용할 수 있습니다.</p>
-    </section>
-  </main>
+      <section class="run-panel">
+        <div id="status" class="status">파일 3개를 업로드한 뒤 분석을 실행하세요.</div>
+        <div class="actions">
+          <button id="runBtn">근태 분석 실행</button>
+          <button id="resetBtn" class="secondary">초기화</button>
+        </div>
+      </section>
+
+      <section class="panel guide" id="output">
+        <div class="section-head">
+          <div>
+            <p>OUTPUT</p>
+            <h2>생성되는 시트</h2>
+          </div>
+          <span class="section-badge">Excel Report</span>
+        </div>
+        <div class="sheet-list">
+          <span>CE 근태 미입력</span>
+          <span>MX 최종 요약</span>
+          <span>MX 지각</span>
+          <span>MX 근태 미입력</span>
+          <span>MX 퇴근 미입력</span>
+          <span>MX 소명처리</span>
+          <span>특별 근무</span>
+          <span>인사이동 기준</span>
+          <span>연차 확인</span>
+          <span>휴무 초과 확인</span>
+          <span>MX 연차 수당 확인</span>
+          <span>MX 연차 사용 누적</span>
+          <span>연차수당지급DB</span>
+          <span>연차사용누적DB</span>
+          <span>읽기 확인_매장계획</span>
+          <span>스케줄 불일치</span>
+        </div>
+      </section>
+
+      <section class="panel preview-panel">
+        <div class="section-head">
+          <div>
+            <p>PREVIEW</p>
+            <h2>보고용 결과 미리보기</h2>
+          </div>
+        </div>
+        <div class="preview-table">
+          <table>
+            <thead>
+              <tr><th>구분</th><th>이름</th><th>기준점포</th><th>지각</th><th>근태 미입력</th><th>퇴근 미입력</th><th>특별 근무</th><th>연차수당</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>MX</td><td>강문흠</td><td>대구혁신점</td><td>0</td><td>0</td><td>1</td><td><span class="badge blue">확인</span></td><td><span class="badge green">지급</span></td></tr>
+              <tr><td>MX</td><td>우예빈</td><td>양재점</td><td>1</td><td>0</td><td>0</td><td>-</td><td><span class="badge gray">미지급</span></td></tr>
+              <tr><td>CE</td><td>상담사</td><td>광명점</td><td>-</td><td>1</td><td>-</td><td>-</td><td>-</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note"><b>V2.0.1</b>은 웍스스케줄 없이 매장근무계획관리 기준으로 근태를 판정합니다. 기준점포가 아닌 출근지점은 <b>특별 근무</b>로 분리하고, 해당일은 지각에서 제외합니다.</p>
+      </section>
+    </main>
+  </div>
 
   <script src="app.js"></script>
 </body>
