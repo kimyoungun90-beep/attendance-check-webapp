@@ -3,7 +3,7 @@
 */
 (() => {
 'use strict';
-const VERSION='1.0.0';
+const VERSION='1.0.2';
 const STATE_SHEET='_STATE';
 const FIELDS=['filePlan','fileAttendance','fileLeave','fileHours'];
 const $=id=>document.getElementById(id);
@@ -25,7 +25,7 @@ const shiftOf=x=>{let m=trim(x).match(/근무\s*([ABCＡＢＣ])/i);return m?({'
 const vacationType=x=>{let s=trim(x).replace(/\s/g,'');if(!s)return {kind:'',units:0};if(/대체휴무|대체휴일|대휴/.test(s))return{kind:'대체휴일',units:/0[.]5|반일|반차|오전|오후/.test(s)?.5:1};if(/보상휴가/.test(s))return{kind:'보상휴가',units:/0[.]5|반차|오전|오후/.test(s)?.5:1};if(/반차/.test(s))return{kind:'반차',units:.5};if(/연차/.test(s))return{kind:'연차',units:1};if(/휴무|휴일/.test(s))return{kind:'휴무',units:1};if(/공가|병가|경조|휴가/.test(s))return{kind:'기타휴가',units:1};if(/교육/.test(s))return{kind:'교육',units:0};if(/근무/.test(s))return{kind:'근무',units:0};return{kind:'기타',units:0};};
 function asMinutes(x){if(x===null||x===undefined||x==='')return null;if(typeof x==='number'&&Number.isFinite(x)){let v=((x%1)+1)%1;return Math.round(v*1440)%1440;}let s=String(x).trim(),m=[...s.matchAll(/(\d{1,2}):(\d{2})(?::\d{2})?/g)].at(-1);if(m)return (+m[1]<=23&&+m[2]<=59)? +m[1]*60+ +m[2]:null; if(/^\d{3,4}$/.test(s)){s=s.padStart(4,'0');let h=+s.slice(0,2),mi=+s.slice(2);return h<24&&mi<60?h*60+mi:null;}return null;}
 const timeFmt=m=>m==null?'':`${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
-const checkinScore=m=>m<=10?-1:m<=60?-2:-3;
+const checkinScore=m=>m<=10?-1:m<60?-2:-3;
 const dateInMonth=(d,mo)=>d&&d.slice(0,7)===mo;
 const dayArrToObj=(arr)=>Object.fromEntries(arr.map(v=>[v.date,v]));
 const escapeHTML=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -75,7 +75,7 @@ if(e.eligibility!=='발생 대상 아님'&&e.offOnEvent){let wk=monday(event.dat
 // If 2+ events have overlapping usage windows, the cause of a make-up day cannot be inferred from the plan alone.
 for(let e of events){let overlap=events.filter(x=>x!==e&&x.start<=e.end&&x.end>=e.start);if(overlap.length)issues.push({kind:'대체휴일 규칙 기간 중첩',name:'전체',date:e.date,info:`${e.title||'공휴일'} · 겹치는 발생 규칙 ${overlap.map(x=>x.title||x.date).join(', ')} (사용처 귀속 확인 필요)`});}
 return{rows,issues,entitlements};}
-function buildWeeks(scope,month,cutoff,holidayData){const seen=new Set(),rows=[],issues=[];const allPlans=[...scope.plans.values()],planIdx=scope.plans;let curr=allPlans.filter(p=>dateInMonth(p.date,month));for(let p of curr){let week=monday(p.date),key=uid(p.id,week,'weekly');if(seen.has(key))continue;seen.add(key);let end=dayStep(week,6),days=rangeDates(week,end,7),known=days.map(d=>planIdx.get(uid(p.id,d,'plan'))).filter(Boolean);let types=known.map(k=>vacationType(k.value));let rest=0,sub=0,annual=0,half=0,other=0;types.forEach(t=>{if(t.kind==='휴무')rest+=t.units;else if(t.kind==='대체휴일')sub+=t.units;else if(t.kind==='연차')annual+=t.units;else if(t.kind==='반차')half+=t.units;else if(['보상휴가','기타휴가'].includes(t.kind))other+=t.units;});let total=rest+sub+annual+half+other;let completed=known.length===7&&end<=cutoff;let holidayExtra=holidayData.entitlements.get(key)||0;let limit=2+holidayExtra;let status=!completed?'월경계/일자 자료대기':total>limit?'휴무 초과 확인':total<2?'정기휴무 부족 확인':total>2?(holidayExtra>0&&total<=limit?'정상 (공휴일 예외)':'추가 휴무·연차 확인'):'정상';if(!completed&&days.some(d=>d>cutoff))status='주차 미확정 (다음 분석 필요)';let item={id:p.id,name:p.name,store:p.store,start:week,end,known:known.length,rest,sub,annual,half,other,total,holidayExtra,limit,status};rows.push(item);if(status.includes('초과')||status.includes('부족'))issues.push({kind:'주차 휴무 검토',name:p.name,date:week,info:`${status} · ${total}일 / 공휴일 예외 포함 기준 ${limit}일`});}
+function buildWeeks(scope,month,cutoff,holidayData){const seen=new Set(),rows=[],issues=[];const allPlans=[...scope.plans.values()],planIdx=scope.plans;let curr=allPlans.filter(p=>dateInMonth(p.date,month));for(let p of curr){let week=monday(p.date),key=uid(p.id,week,'weekly');if(seen.has(key))continue;seen.add(key);let end=dayStep(week,6),days=rangeDates(week,end,7),known=days.map(d=>planIdx.get(uid(p.id,d,'plan'))).filter(Boolean);let types=known.map(k=>vacationType(k.value));let rest=0,sub=0,annual=0,half=0,other=0;types.forEach(t=>{if(t.kind==='휴무')rest+=t.units;else if(t.kind==='대체휴일')sub+=t.units;else if(t.kind==='연차')annual+=t.units;else if(t.kind==='반차')half+=t.units;else if(['보상휴가','기타휴가'].includes(t.kind))other+=t.units;});let total=rest+sub+annual+half+other;let completed=known.length===7&&end<=cutoff;let holidayExtra=holidayData.entitlements.get(key)||0;let limit=2+holidayExtra;let status=!completed?'월경계/일자 자료대기':rest>limit?'정기휴무 초과 확인':rest<2?'정기휴무 부족 확인':rest>2?'정상 (공휴일 휴무 예외)':sub>0?'정기휴무 정상 · 대체휴일 별도확인':'정상';if(!completed&&days.some(d=>d>cutoff))status='주차 미확정 (다음 분석 필요)';let item={id:p.id,name:p.name,store:p.store,start:week,end,known:known.length,rest,sub,annual,half,other,total,holidayExtra,limit,status};rows.push(item);if(status.includes('초과')||status.includes('부족'))issues.push({kind:'주차 휴무 검토',name:p.name,date:week,info:`${status} · ${total}일 / 공휴일 예외 포함 기준 ${limit}일`});}
 return{rows,issues};}
 function leaveAudit(scope,month){let rows=[],issues=[];for(let l of scope.leaves){if(l.end.slice(0,7)<month||l.start.slice(0,7)>month)continue;let days=rangeDates(l.start,l.end,100),schedule=days.map(d=>scope.plans.get(uid(l.id,d,'plan'))).filter(Boolean);let leavePlan=schedule.filter(p=>{let k=vacationType(p.value).kind;return ['연차','반차','대체휴일','기타휴가','보상휴가'].includes(k);});let status=l.status!=='승인'?'승인 대기/미확정':!leavePlan.length?'계획 대조 필요':'계획에 휴가 표기됨';let item={...l,schedule:leavePlan.map(p=>p.date+':'+p.value).join(' / '),compare:status};rows.push(item);if(status!=='계획에 휴가 표기됨')issues.push({kind:'연차신청현황 대조',name:l.name,date:l.start,info:`${l.type} ${l.status} · ${status}`});}return{rows,issues};}
 function buildLeaveLedger(scope,month,cutoff){let items=[],seen=new Set();for(let p of scope.plans.values()){
@@ -88,9 +88,22 @@ function buildLeaveLedger(scope,month,cutoff){let items=[],seen=new Set();for(le
 }items.sort((a,b)=>a.id.localeCompare(b.id)||a.date.localeCompare(b.date));let totals=new Map();for(let r of items){let key=r.id,now=totals.get(key)||0;r.yearCumulative=now+r.units;totals.set(key,r.yearCumulative);}
 return items.sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name,'ko'));}
 function statusFromOverride(raw,allowed){let v=trim(raw).toUpperCase();if(['인정','소명인정','감점제외','제외','정시인정','출근인정','퇴근인정'].includes(v))return'제외';if(allowed&&['무단결근확정','무단결근 확정','무단결근'].includes(v))return'무단결근 확정';return'';}
-function applyScores(findings,overrides){let late=findings.late.map(v=>({...v,excluded:statusFromOverride(overrides[v.key],false)==='제외'}));let missingIn=findings.missingIn.map(v=>{let flag=statusFromOverride(overrides[v.key],true);return {...v,excluded:flag==='제외',score:flag==='무단결근 확정'?-20:-3,flag};});let missingOut=findings.missingOut.map(v=>({...v,excluded:statusFromOverride(overrides[v.key],false)==='제외'}));let perId=new Map();let all=[...late,...missingIn,...missingOut];for(let f of all){if(!perId.has(f.id))perId.set(f.id,{late:0,missingIn:0,missingOut:0,missOutCount:0,penalty:0});let item=perId.get(f.id);if(f.excluded)continue;if(late.includes(f)){item.late++;item.penalty+=f.score;}else if(missingIn.includes(f)){item.missingIn++;item.penalty+=f.score;}else{item.missingOut++;item.missOutCount++;}}
-const groups={};for(let f of missingOut)(groups[f.id]??=[]).push(f);for(let [id,nlist] of Object.entries(groups)){let count=0;for(let f of nlist.sort((a,b)=>a.date.localeCompare(b.date))){if(!f.excluded)count++;f.sequence=f.excluded?0:count;f.score=f.excluded?0:(count>=3?-count:0);}}for(let [_,v] of perId){if(v.missOutCount>=3)v.penalty-=v.missOutCount;}
-return{late,missingIn,missingOut,perId};}
+function applyScores(findings,overrides){
+ let late=findings.late.map(v=>({...v,excluded:statusFromOverride(overrides[v.key],false)==='제외'}));
+ let missingIn=findings.missingIn.map(v=>{let flag=statusFromOverride(overrides[v.key],true);return {...v,excluded:flag==='제외',score:flag==='무단결근 확정'?-20:-3,flag};});
+ let missingOut=findings.missingOut.map(v=>({...v,excluded:statusFromOverride(overrides[v.key],false)==='제외'}));
+ const perId=new Map();
+ function record(id){if(!perId.has(id))perId.set(id,{late:0,missingIn:0,missingOut:0,missOutCount:0,penalty:0});return perId.get(id);}
+ for(let f of [...late,...missingIn,...missingOut])record(f.id);
+ const lateById=new Map();
+ for(let f of late){if(f.excluded){f.score=0;continue;}let items=lateById.get(f.id)||[];items.push(f);lateById.set(f.id,items);}
+ for(let [id,items] of lateById){let p=record(id),count=items.length;p.late=count;for(let f of items){f.score=f.delta<=10&&count<3?0:checkinScore(f.delta);p.penalty+=f.score;}}
+ for(let f of missingIn){if(f.excluded){f.score=0;continue;}let p=record(f.id);p.missingIn++;p.penalty+=f.score;}
+ const outById=new Map();
+ for(let f of missingOut){if(f.excluded){f.score=0;f.sequence=0;continue;}let items=outById.get(f.id)||[];items.push(f);outById.set(f.id,items);}
+ for(let [id,items] of outById){let p=record(id);p.missingOut=items.length;p.missOutCount=items.length;let count=0;for(let f of items.sort((a,b)=>a.date.localeCompare(b.date))){count++;f.sequence=count;f.score=count>=3?-count:0;}if(count>=3)p.penalty-=count;}
+ return{late,missingIn,missingOut,perId};
+}
 function analyze(state,month,hours,cutoff,useModified){let scope=resolveScope(state,month),findings=makeFindings(scope,month,hours,cutoff,useModified,state.overrides||{}),holiday=buildHolidays(scope,month,state.holidays||[],state.hires||{},cutoff),weekly=buildWeeks(scope,month,cutoff,holiday),leave=leaveAudit(scope,month),scored=applyScores(findings,state.overrides||{}),summaries=[];let ids=[...new Set(state.months[month].plan.map(p=>p.id))];for(let id of ids){let person=scope.people.get(id),points=scored.perId.get(id)||{late:0,missingIn:0,missingOut:0,penalty:0};if(!person)continue;let weekIssues=weekly.rows.filter(r=>r.id===id&&(r.status.includes('초과')||r.status.includes('부족')));let hIssues=holiday.rows.filter(r=>r.id===id&&(r.status.includes('중복')||r.status.includes('초과')||r.status.includes('대상 아님·사용')));summaries.push({...person,...points,weekCheck:weekIssues.length,holidayCheck:hIssues.length,warning:points.penalty<=-5?'경고장 검토':'-',month});}
 let leaveLedger=buildLeaveLedger(scope,month,cutoff);let issues=[...findings.issues,...holiday.issues,...weekly.issues,...leave.issues];let uniqIssues=[],seen=new Set();for(let i of issues){let k=JSON.stringify(i);if(!seen.has(k)){seen.add(k);uniqIssues.push(i);}}return{month,cutoff,summaries,scored,weekly:weekly.rows,holiday:holiday.rows,leave:leave.rows,leaveLedger,issues:uniqIssues,events:state.holidays,hires:state.hires};}
 
@@ -104,7 +117,7 @@ function addSheet(wb,title,headers,items,widths=[],opts={}){let top=[`ZENIEL  / 
 for(let c=0;c<n;c++){let ad=XLSX.utils.encode_cell({r:3,c});if(ws[ad])ws[ad].s=clone(styleHeader);}for(let r=4;r<rows.length;r++){let vals=rows[r];let bad=opts.badRow?opts.badRow(vals):false;for(let c=0;c<n;c++){let ad=XLSX.utils.encode_cell({r,c});if(ws[ad])ws[ad].s=styleBody(r,bad);}}
 XLSX.utils.book_append_sheet(wb,ws,title.slice(0,31));return ws;}
 const stamp=d=>d||'';
-function buildWorkbook(result,state){let wb=XLSX.utils.book_new(),month=result.month;let summary=result.summaries.sort((a,b)=>a.store.localeCompare(b.store,'ko')||a.name.localeCompare(b.name,'ko'));addSheet(wb,'최종 요약',['점포','사번','이름','지각(회)','출근 미등록','퇴근 미등록','지각/미등록 감점','경고장','휴무 검토','대체휴일 검토'],summary.map(r=>[r.store,r.id,r.name,r.late,r.missingIn,r.missingOut,r.penalty,r.warning,r.weekCheck,r.holidayCheck]),[21,14,13,14,15,15,19,14,14,16],{month,badRow:r=>r[6]<0});
+function buildWorkbookLegacy(result,state){let wb=XLSX.utils.book_new(),month=result.month;let summary=result.summaries.sort((a,b)=>a.store.localeCompare(b.store,'ko')||a.name.localeCompare(b.name,'ko'));addSheet(wb,'최종 요약',['점포','사번','이름','지각(회)','출근 미등록','퇴근 미등록','지각/미등록 감점','경고장','휴무 검토','대체휴일 검토'],summary.map(r=>[r.store,r.id,r.name,r.late,r.missingIn,r.missingOut,r.penalty,r.warning,r.weekCheck,r.holidayCheck]),[21,14,13,14,15,15,19,14,14,16],{month,badRow:r=>r[6]<0});
 let records=(arr,extra)=>arr.slice().sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name,'ko')).map(x=>[x.date,x.store,x.id,x.name,x.plan,x.shift||'',timeFmt(x.scheduled),timeFmt(x.checkin),timeFmt(x.checkout),...(extra(x)),x.excluded?'소명 인정':'자동판정']);
 addSheet(wb,'지각',['날짜','계획 점포','사번','이름','매장계획','근무조','기준시간','출근','퇴근','지각(분)','감점','상태'],records(result.scored.late,r=>[r.delta,r.excluded?0:r.score]),[14,20,14,13,16,10,12,11,11,12,10,14],{month,badRow:r=>r[10]<0});
 addSheet(wb,'출근 미등록',['날짜','점포','사번','이름','매장계획','근무조','기준시간','출근','퇴근','사유','감점','상태'],records(result.scored.missingIn,r=>[r.flag==='무단결근 확정'?'무단결근 확정':r.reason,r.excluded?0:r.score]),[14,20,14,13,16,10,12,11,11,39,10,14],{month,badRow:r=>r[10]<0});
@@ -131,7 +144,80 @@ addSheet(wb,'이용 안내',['항목','설명'],[
 ['저장방식','브라우저 로컬에서 계산하고 이전 기록은 보고서의 숨김 상태 시트에 담습니다. 서버 저장 없음.'],
 ], [26,94],{month});
 const data=JSON.stringify(state);let chunks=data.match(/[\s\S]{1,29000}/g)||[''];let st=XLSX.utils.aoa_to_sheet([['ZENIEL_STATE','1.0.0'],...chunks.map((chunk,i)=>[i+1,chunk])]);XLSX.utils.book_append_sheet(wb,st,STATE_SHEET);wb.Workbook=wb.Workbook||{};wb.Workbook.Sheets=wb.SheetNames.map(n=>({Hidden:n===STATE_SHEET?1:0}));wb.Props={Title:`코스트코 근태분석 ${month}`,Subject:'누적 근태·휴무 분석',Author:'ZENIEL Attendance System',Comments:'자동판정·검증 결과'};return wb;}
-function fromPrevious(workbook){let sheet=workbook.Sheets[STATE_SHEET];if(!sheet)throw Error('이전 결과에 누적 저장 시트가 없습니다. 이 프로그램에서 생성한 보고서를 선택해주세요.');let raw=XLSX.utils.sheet_to_json(sheet,{header:1,defval:''});if(raw[0]?.[0]!=='ZENIEL_STATE')throw Error('지원하지 않는 이전 결과 형식입니다.');let json=raw.slice(1).map(r=>String(r[1]||'')).join('');let st=JSON.parse(json);if(!st.months||!st.holidays||!st.hires)throw Error('이전 결과의 누적 데이터가 손상되었습니다.');return st;}
+
+function buildWorkbook(result,state){
+ const wb=buildWorkbookLegacy(result,state),month=result.month;
+ const summary=result.summaries.slice().sort((a,b)=>a.store.localeCompare(b.store,'ko')||a.name.localeCompare(b.name,'ko'));
+ const late=result.scored.late.slice().sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name,'ko'));
+ const missingIn=result.scored.missingIn.slice().sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name,'ko'));
+ const missingOut=result.scored.missingOut.slice().sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name,'ko'));
+ const allScored=[...late.map(r=>['지각',r]),...missingIn.map(r=>['출근 미등록',r]),...missingOut.map(r=>['퇴근 미등록',r])].sort((a,b)=>a[1].date.localeCompare(b[1].date)||a[1].name.localeCompare(b[1].name,'ko'));
+ const end=Math.max(5,allScored.length+4);
+ const ref=col=>`'소명 및 판정'!$${col}$5:$${col}$${end}`;
+ const formula=(ws,a,s)=>{let p=ws[a]||{};ws[a]={...p,t:'n',f:s.replace(/^=/,''),v:0};};
+ const formulaText=(ws,a,s)=>{let p=ws[a]||{};ws[a]={...p,t:'s',f:s.replace(/^=/,''),v:''};};
+ function replaceSheet(title,headers,items,widths,opts){let temp=XLSX.utils.book_new();addSheet(temp,title,headers,items,widths,opts);wb.Sheets[title]=temp.Sheets[title];return wb.Sheets[title];}
+ const reviewRows=allScored.map(([type,r])=>{
+  const basic=type==='퇴근 미등록'?0:type==='출근 미등록'?-3:checkinScore(r.delta);
+  const orig=trim(state.overrides?.[r.key]||'');
+  const confirmation=statusFromOverride(orig,true)==='제외'?'제외':statusFromOverride(orig,true)==='무단결근 확정'?'무단결근 확정':'';
+  return[type,r.date,r.id,r.name,r.reason||r.plan,'자동판정',r.key,confirmation,'자동판정',basic,r.excluded?0:r.score,'H열에 제외 입력 → 자동 반영',''];
+ });
+ const review=replaceSheet('소명 및 판정',
+  ['구분','날짜','사번','이름','원인','자동판정','일치키','확인자','최종처리','기본점수','최종반영감점','작성 안내','소명사유'],
+  reviewRows,[16,14,14,13,39,19,44,19,20,14,19,38,31],
+  {month,note:'확인자(H열)에 "제외" 입력 시 같은 직원의 지각 총횟수도 재계산됩니다. 10분 이내 1~2회는 0점, 3회부터 건당 -1점.'});
+ review['A3']={t:'s',v:'H열 [확인자]에 제외 입력 → 월 지각 횟수/전체 점수 자동 재계산  |  제외 삭제 → 복원  |  소명사유(M열) 기록',s:{font:{name:'맑은 고딕',bold:true,color:{rgb:C.green},sz:10},fill:sFill(C.mint),alignment:{vertical:'center'}}};
+ review['!merges'].push({s:{r:2,c:0},e:{r:2,c:12}});review['!rows'][2]={hpt:26};
+ for(let i=0;i<reviewRows.length;i++){
+  const r=i+5;
+  formulaText(review,`I${r}`,`IF(H${r}="제외","감점 제외",IF(H${r}="무단결근 확정","무단결근 확정","자동판정"))`);
+  const lateness=`COUNTIFS(${ref('A')},"지각",${ref('C')},C${r},${ref('H')},"<>제외")`;
+  const checkout=`COUNTIFS(${ref('A')},"퇴근 미등록",${ref('C')},C${r},${ref('H')},"<>제외")`;
+  formula(review,`K${r}`,`IF(H${r}="제외",0,IF(A${r}="퇴근 미등록",IF(${checkout}>=3,-1,0),IF(A${r}="지각",IF(AND(J${r}=-1,${lateness}<3),0,J${r}),IF(AND(A${r}="출근 미등록",H${r}="무단결근 확정"),-20,J${r}))))`);
+  const old=review[`H${r}`]||{t:'s',v:''};
+  review[`H${r}`]={...old,s:{...styleBody(i,false),fill:sFill('FFF4D7'),font:{name:'맑은 고딕',bold:true,color:{rgb:C.green},sz:10}}};
+ }
+ const sumRows=summary.map(r=>[r.store,r.id,r.name,r.late,r.missingIn,r.missingOut,r.penalty,r.warning,r.weekCheck,r.holidayCheck]);
+ const summ=replaceSheet('최종 요약',['점포','사번','이름','지각(회)','출근 미등록','퇴근 미등록','지각/미등록 감점','경고장','휴무 검토','대체휴일 검토'],sumRows,[21,14,13,14,15,15,19,14,14,16],{month,note:'소명 및 판정 H열 "제외" 적용 즉시 10분 이내 지각 감점과 최종 점수가 재계산됩니다.',badRow:r=>r[6]<0});
+ const counts=(type,id)=>`COUNTIFS(${ref('A')},"${type}",${ref('C')},${id},${ref('H')},"<>제외")`;
+ for(let i=0;i<sumRows.length;i++){const r=i+5;formula(summ,`D${r}`,counts('지각',`$B${r}`));formula(summ,`E${r}`,counts('출근 미등록',`$B${r}`));formula(summ,`F${r}`,counts('퇴근 미등록',`$B${r}`));formula(summ,`G${r}`,`SUMIF(${ref('C')},$B${r},${ref('K')})`);formulaText(summ,`H${r}`,`IF(G${r}<=-5,"경고장 검토","-")`);}
+ function details(type,entries){
+  return entries.map(r=>[r.date,r.store,r.id,r.name,r.plan,r.shift||'',timeFmt(r.scheduled),timeFmt(r.checkin),timeFmt(r.checkout),type==='지각'?r.delta:type==='퇴근 미등록'?r.reason:r.flag==='무단결근 확정'?'무단결근 확정':r.reason,r.excluded?0:r.score,r.excluded?'소명 인정':'자동판정',r.key]);
+ }
+ function replaceDetail(title,type,items,widths,note){
+  const headers=['날짜',type==='지각'?'계획 점포':'점포','사번','이름','매장계획','근무조','기준시간','출근','퇴근',type==='지각'?'지각(분)':'사유',type==='퇴근 미등록'?'해당 회차 누적감점':'감점','상태','내부연결키'];
+  const ws=replaceSheet(title,headers,details(type,items),[...widths,46],{month,note,badRow:r=>r[10]<0});ws['!cols'][12].hidden=true;
+  for(let i=0;i<items.length;i++){
+   const row=i+5,confirm=`IFERROR(INDEX(${ref('H')},MATCH($M${row},${ref('G')},0)),"")`;
+   if(type==='퇴근 미등록'){const remain=`COUNTIFS(${ref('A')},"퇴근 미등록",${ref('C')},$C${row},${ref('H')},"<>제외",${ref('B')},"<="&$A${row})`;formula(ws,`K${row}`,`IF(${confirm}="제외",0,IF(${remain}>=3,-(${remain}),0))`);}
+   else formula(ws,`K${row}`,`IFERROR(INDEX(${ref('K')},MATCH($M${row},${ref('G')},0)),0)`);
+   formulaText(ws,`L${row}`,`IF(${confirm}="제외","소명 인정","자동판정")`);
+  }
+ }
+ replaceDetail('지각','지각',late,[14,20,14,13,16,10,12,11,11,12,10,14],'월 지각 전체 3회부터 0~10분 지각도 건당 -1점. 11~59분 -2점, 60분 이상 -3점. H열 제외 시 재계산.');
+ replaceDetail('출근 미등록','출근 미등록',missingIn,[14,20,14,13,16,10,12,11,11,39,10,14],'소명 시트 H열 제외 시 출근 미등록 감점 제외. 무단결근은 확인 후 확정.');
+ replaceDetail('퇴근 미등록','퇴근 미등록',missingOut,[14,20,14,13,16,10,12,11,11,32,22,14],'퇴근누락 1~2회 0점, 3회 -3점, 4회 -4점. 상세 점수는 해당 회차 누적감점으로 합산하지 않음.');
+ replaceSheet('주간 휴무',['주차 시작','주차 종료','점포','사번','이름','확인일수','정기휴무','대체휴일','연차','반차','기타휴가','쉬는날 합계','공휴일 예외','판정기준','판정'],result.weekly.map(r=>[r.start,r.end,r.store,r.id,r.name,r.known,r.rest,r.sub,r.annual,r.half,r.other,r.total,r.holidayExtra,r.limit,r.status]),[14,14,20,14,13,12,12,13,10,10,13,15,12,12,34],{month,note:'정기휴무 주 2회를 별도로 검사. 정당한 연차 및 대체휴일은 단순 휴무 초과에 합산하지 않음.',badRow:r=>String(r[14]).includes('초과')});
+ replaceSheet('이용 안내',['항목','설명'],[
+ ['월별 사용','원본 4개를 업로드해 분석월을 선택하고 실행합니다.'],
+ ['다음달 이월','이 결과 엑셀과 다음달 원본 4개를 함께 업로드합니다.'],
+ ['소명 제외','소명 및 판정 H열 확인자에 제외 입력 → 지각 횟수 및 감점 자동 재계산.'],
+ ['소명 되돌리기','제외를 지우면 자동 점수가 복원됩니다.'],
+ ['주차 계산','월~일 주차, 월 경계 주차는 다음 분석월과 결합해 확정.'],
+ ['지각 기준','기준시간과 같은 시각도 지각. 월 전체 지각 2회 이내는 10분 이내 감점 0점. 3회부터 10분 이내 건당 -1점. 11~59분 -2점, 60분 이상 -3점. 예: 10분 이내 2회+15분 1회=-4점.'],
+ ['퇴근누락','1~2회 0점, 3회 -3점, 4회 -4점, 이후 건수만큼 감점.'],
+ ['교육','근무계획 교육일은 지각 제외. 다른 매장에서 출근해도 감점하지 않음.'],
+ ['정기휴무·연차','정기휴무 2회와 정당한 연차·대체휴일은 따로 관리.'],
+ ['대체휴일','당일 휴무와 기간 내 사용을 비교하고 중복 가능성은 검증 필요로 표기.'],
+ ['다음달 소명','제외를 수정해 저장한 결과 파일을 다음달 이전 결과로 재업로드하면 소명 이력 복원.'],
+ ],[26,98],{month});
+ wb.Workbook=wb.Workbook||{};wb.Workbook.CalcPr={calcMode:'auto',fullCalcOnLoad:true,forceFullCalc:true};
+ const stateSheet=wb.Sheets[STATE_SHEET];if(stateSheet&&stateSheet['B1'])stateSheet['B1'].v='1.0.2';
+ wb.Props={...(wb.Props||{}),Comments:'소명 수정 시 전체 지각횟수 및 감점 재계산 (1.0.2)'};
+ return wb;
+}
+function fromPrevious(workbook){let sheet=workbook.Sheets[STATE_SHEET];if(!sheet)throw Error('이전 결과에 누적 저장 시트가 없습니다. 이 프로그램에서 생성한 보고서를 선택해주세요.');let raw=XLSX.utils.sheet_to_json(sheet,{header:1,defval:''});if(raw[0]?.[0]!=='ZENIEL_STATE')throw Error('지원하지 않는 이전 결과 형식입니다.');let json=raw.slice(1).map(r=>String(r[1]||'')).join('');let st=JSON.parse(json);if(!st.months||!st.holidays||!st.hires)throw Error('이전 결과의 누적 데이터가 손상되었습니다.');let review=workbook.Sheets['소명 및 판정'];if(review){let rows=XLSX.utils.sheet_to_json(review,{header:1,defval:'',raw:true});if(trim(rows[3]?.[7])==='확인자'){st.overrides=st.overrides||{};for(let row of rows.slice(4)){let key=trim(row[6]);if(!key||!/^((지각)|(출근 미등록)|(퇴근 미등록))\|/.test(key))continue;let decision=trim(row[7]),cls=statusFromOverride(decision,true);if(cls==='제외')st.overrides[key]='제외';else if(cls==='무단결근 확정')st.overrides[key]='무단결근 확정';else delete st.overrides[key];}}}return st;}
 function mergeHistory(prev,uiEvents,uiHires){let x=clone(prev),map=new Map((x.holidays||[]).map(e=>[keyEvent(e),e]));for(let e of uiEvents)map.set(keyEvent(e),e);x.holidays=[...map.values()];x.hires={...(x.hires||{}),...uiHires};x.overrides={...(x.overrides||{})};return x;}
 function exportWorkbook(){if(!result||!lastReport)throw Error('먼저 분석을 실행해주세요.');let wb=buildWorkbook(result,lastReport);let name=`ZENIEL_코스트코_근태휴무_${result.month.replace('-','')}_V${VERSION}.xlsx`;XLSX.writeFile(wb,name,{bookType:'xlsx',compression:true});}
 
