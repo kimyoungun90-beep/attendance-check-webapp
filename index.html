@@ -1,261 +1,61 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ZENIEL 근태 분석 시스템 V2.0.2</title>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b332b" />
+  <title>코스트코 근태 · 휴무 통합관리 | ZENIEL</title>
   <link rel="stylesheet" href="style.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+  <script defer src="app.js"></script>
 </head>
 <body>
   <div class="app-shell">
-    <aside class="sidebar" aria-label="ZENIEL 근태 분석 메뉴">
-      <div class="side-logo">
-        <div class="logo-mark">Z</div>
-        <div>
-          <strong>ZENIEL</strong>
-          <span>Attendance System</span>
-        </div>
-      </div>
-
-      <nav class="side-nav">
-        <a class="active" href="#dashboard"><i>⌂</i><span>대시보드</span></a>
-        <a href="#upload"><i>⇧</i><span>파일 업로드</span></a>
-        <a href="#criteria"><i>◎</i><span>지급 기준</span></a>
-        <a href="#transfer"><i>⇄</i><span>인사 이동</span></a>
-        <a href="#output"><i>▦</i><span>생성 시트</span></a>
+    <aside class="sidebar">
+      <div class="side-top"><div class="logo-mark">Z</div><div><b>ZENIEL</b><span>COSTCO OPERATIONS</span></div></div>
+      <nav aria-label="메뉴">
+        <a href="#overview" class="nav-link active"><span class="nav-icon">▣</span> 대시보드</a>
+        <a href="#uploads" class="nav-link"><span class="nav-icon">↥</span> 엑셀 업로드</a>
+        <a href="#holidays" class="nav-link"><span class="nav-icon">▦</span> 대체휴일 기준</a>
+        <a href="#personnel" class="nav-link"><span class="nav-icon">♙</span> 입사일 관리</a>
+        <a href="#report" class="nav-link"><span class="nav-icon">▤</span> 분석 결과</a>
       </nav>
-
-      <div class="side-card">
-        <p>Local Excel Processing</p>
-        <b>개인정보 파일은 서버에 저장하지 않고 브라우저에서 처리합니다.</b>
-      </div>
+      <div class="side-bottom"><div class="pulse"></div> 로컬 분석 · 서버 저장 없음 <small>직원 근태자료는 GitHub/Vercel에 업로드되지 않습니다.</small></div>
     </aside>
-
-    <main class="main" id="dashboard">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">ZENIEL Workforce Report</p>
-          <h1>ZENIEL 근태 분석 시스템</h1>
-          <span>MX / CE 통합 근태 · 연차 · 특별근무 자동 분석</span>
-        </div>
-        <div class="top-actions">
-          <div class="version-pill">V2.0.2</div>
-          <div class="today-card">
-            <small>현재 버전</small>
-            <b>Special Work · Transfer Rule</b>
+    <main class="main">
+      <header class="topbar"><div><div class="eyebrow">WORKFORCE INTELLIGENCE</div><div class="topbar-title">코스트코 근태 · 휴무 통합관리</div></div><div class="top-actions"><span class="version">VERSION 1.0.0</span><span class="pill">2026 · 새 설계</span></div></header>
+      <div class="content">
+        <section id="overview" class="intro-section">
+          <div><div class="eyebrow">ZENIEL / COSTCO</div><h1>근무 기록부터<br><em>휴무 적정성</em>까지.</h1><p>네 개의 월별 엑셀을 연결해 지각, 출퇴근 누락, 연차 신청, 주간 휴무 및 대체휴일을 한 번에 검증합니다.</p><div class="intro-pills"><span>사번 우선 연결</span><span>월요일~일요일 주차</span><span>대체휴일 중복 검증</span></div></div>
+          <div class="hero-panel"><div class="hero-kicker">ANALYSIS FLOW</div><div class="hero-flow"><span>01</span><div>월별 원본 확인<small>근무계획 · 근태 · 연차 · 영업시간</small></div></div><div class="flow-separator"></div><div class="hero-flow"><span>02</span><div>규정 및 대체휴일 적용<small>발생일 / 사용기간 / 입사일</small></div></div><div class="flow-separator"></div><div class="hero-flow"><span>03</span><div>검증용 엑셀 다운로드<small>세부 내역 · 소명 · 이월 데이터</small></div></div></div>
+        </section>
+        <div class="metrics" id="metrics"><div class="metric"><div class="metric-label">계획서 인원</div><div class="metric-value" id="statPeople">—</div><div class="metric-desc">이번 월 입력 기준</div></div><div class="metric"><div class="metric-label">지각 확인 건</div><div class="metric-value" id="statLate">—</div><div class="metric-desc">교육 제외 · 기준시간 포함</div></div><div class="metric"><div class="metric-label">출퇴근 입력 이상</div><div class="metric-value" id="statMissing">—</div><div class="metric-desc">출근 + 퇴근 미등록</div></div><div class="metric"><div class="metric-label">대체휴일 검토</div><div class="metric-value" id="statHoliday">—</div><div class="metric-desc">중복·대상 확인 필요</div></div></div>
+        <section id="uploads" class="panel"><div class="section-header"><div><span class="section-index">01 / DATA SOURCES</span><h2>월별 파일 업로드</h2><p>같은 월의 엑셀을 선택해 주세요. 이전 월 결과는 이월 주차와 대체휴일 이력을 이어 붙이는 데 사용합니다.</p></div><span class="tag-neutral">파일 4개 필수</span></div>
+          <div class="uploads">
+            <label class="upload-tile"><span class="upload-number">01</span><span class="upload-symbol">▤</span><strong>매장근무계획관리</strong><small>직원별 점포 · 근무조 · 휴무</small><span class="upload-select" id="namePlan">파일 선택</span><input id="filePlan" type="file" accept=".xlsx,.xls" required></label>
+            <label class="upload-tile"><span class="upload-number">02</span><span class="upload-symbol">◷</span><strong>근태관리</strong><small>실제 출근 · 퇴근 · 출근지점</small><span class="upload-select" id="nameAttendance">파일 선택</span><input id="fileAttendance" type="file" accept=".xlsx,.xls" required></label>
+            <label class="upload-tile"><span class="upload-number">03</span><span class="upload-symbol">▦</span><strong>연차신청현황</strong><small>신청 · 승인 · 사용일 대조</small><span class="upload-select" id="nameLeave">파일 선택</span><input id="fileLeave" type="file" accept=".xlsx,.xls" required></label>
+            <label class="upload-tile"><span class="upload-number">04</span><span class="upload-symbol">▥</span><strong>영업시간 DB</strong><small>점포별 A · B · C조 출근시간</small><span class="upload-select" id="nameHours">파일 선택</span><input id="fileHours" type="file" accept=".xlsx,.xls" required></label>
           </div>
-        </div>
-      </header>
-
-      <section class="hero-grid">
-        <article class="hero-card">
-          <div class="hero-content">
-            <p class="hero-label">Costco Samsung · Field Attendance</p>
-            <h2>엑셀 3개로 끝내는<br />근태·연차 통합 리포트</h2>
-            <p>인력DB, 매장근무계획, 근태관리 파일만 넣으면 지각, 근태 미입력, 퇴근 미입력, 특별 근무, 연차 수당 확인까지 보고용 엑셀로 정리합니다.</p>
-            <div class="hero-tags">
-              <span>웍스 제외</span>
-              <span>특별근무 지각 제외</span>
-              <span>인사이동 반영</span>
-              <span>연차 누적 DB</span>
-            </div>
-          </div>
-          <div class="hero-orb"><span>V2</span></div>
-        </article>
-
-        <article class="quick-status">
-          <p>분석 흐름</p>
-          <ol>
-            <li><b>01</b> 기준 파일 업로드</li>
-            <li><b>02</b> 분석 월·지급 기준 설정</li>
-            <li><b>03</b> 인사 이동자 입력</li>
-            <li><b>04</b> 결과 엑셀 다운로드</li>
-          </ol>
-        </article>
-      </section>
-
-      <section class="kpi-row" aria-label="핵심 기능 요약">
-        <div class="kpi-card mint"><small>판정 기준</small><strong>매장근무계획</strong><span>근무A/B/C 기준</span></div>
-        <div class="kpi-card blue"><small>예외 처리</small><strong>특별 근무</strong><span>타점 출근 시 지각 제외</span></div>
-        <div class="kpi-card amber"><small>연차 관리</small><strong>수당 확인</strong><span>일반/26년 입사자 분리</span></div>
-        <div class="kpi-card violet"><small>누적 관리</small><strong>DB 시트</strong><span>다음 달 기준 반영</span></div>
-      </section>
-
-      <section class="panel upload-panel" id="upload">
-        <div class="section-head">
-          <div>
-            <p>STEP 01</p>
-            <h2>분석 파일 업로드</h2>
-          </div>
-          <span class="section-badge">Required 3 Files</span>
-        </div>
-        <div class="upload-grid three">
-          <label class="upload">
-            <b>01</b>
-            <span>인력 및 점포별 근무시간.xlsx</span>
-            <small>인력DB · 영업시간DB · 연차DB · 누적DB 기준</small>
-            <em class="file-name">파일 선택 전</em>
-            <input id="fileMaster" type="file" accept=".xlsx,.xls" />
-          </label>
-          <label class="upload">
-            <b>02</b>
-            <span>매장근무계획관리.xlsx</span>
-            <small>MX/CE 근무, 연차, 휴무, 교육 기준</small>
-            <em class="file-name">파일 선택 전</em>
-            <input id="filePlan" type="file" accept=".xlsx,.xls" />
-          </label>
-          <label class="upload">
-            <b>03</b>
-            <span>근태관리.xlsx</span>
-            <small>출근·퇴근 시간, 출근지점 기준</small>
-            <em class="file-name">파일 선택 전</em>
-            <input id="fileAttendance" type="file" accept=".xlsx,.xls" />
-          </label>
-        </div>
-      </section>
-
-      <section class="panel" id="criteria">
-        <div class="section-head">
-          <div>
-            <p>STEP 02</p>
-            <h2>분석 기준 설정</h2>
-          </div>
-          <span class="section-badge">Optional</span>
-        </div>
-        <div class="options">
-          <div class="field-card">
-            <label for="monthInput">분석 월</label>
-            <input id="monthInput" type="month" />
-            <small>비워두면 근태관리 파일에서 가장 많이 등장하는 연월로 자동 추정합니다.</small>
-          </div>
-          <div class="field-card">
-            <label for="baseDateInput">판정 기준일</label>
-            <input id="baseDateInput" type="date" />
-            <small>비워두면 근태관리 파일의 마지막 근무일까지만 판정합니다.</small>
-          </div>
-          <div class="field-card">
-            <label for="annualPayThreshold">일반 연차수당 지급 기준</label>
-            <input id="annualPayThreshold" type="number" min="0" step="0.5" placeholder="자동: 5월 8 / 6월 7 / 7월 6" />
-            <small>25년 이전 입사자 기준입니다. 차감 후 잔여가 이 기준 이상이면 지급으로 계산합니다.</small>
-          </div>
-          <div class="field-card">
-            <label for="monthlyPayThreshold">26년 입사자 월차 지급 기준</label>
-            <input id="monthlyPayThreshold" type="number" min="0" step="0.5" value="1" />
-            <small>26년 입사자는 월차 발생분 기준입니다. 발생 월차 잔여가 이 기준 이상이면 지급합니다.</small>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel transfer-panel" id="transfer">
-        <div class="section-head">
-          <div>
-            <p>STEP 03</p>
-            <h2>인사 이동 기준 입력</h2>
-          </div>
-          <span class="section-badge">Click Transfer Rule</span>
-        </div>
-        <div class="transfer-layout picker-mode">
-          <div class="field-card transfer-card">
-            <label for="transferPerson">인사 이동 대상자</label>
-            <select id="transferPerson">
-              <option value="">인력DB 업로드 후 직원 선택</option>
-            </select>
-            <small>직원명을 선택하면 인력DB 기준 현재 점포가 자동 표시됩니다.</small>
-
-            <div class="transfer-grid">
-              <div>
-                <label for="transferCurrentStore">인력DB 기준 점포</label>
-                <input id="transferCurrentStore" type="text" readonly placeholder="직원 선택 시 자동 표시" />
-              </div>
-              <div>
-                <label for="transferStartDate">변경 시작일</label>
-                <input id="transferStartDate" type="date" />
-              </div>
-              <div>
-                <label for="transferAfterStore">변경 후 점포</label>
-                <select id="transferAfterStore">
-                  <option value="">점포 선택</option>
-                </select>
-              </div>
-              <div class="transfer-button-wrap">
-                <button id="addTransferBtn" type="button" class="mini-action">인사 이동 추가</button>
-              </div>
-            </div>
-            <textarea id="transferInput" rows="3" readonly hidden></textarea>
-          </div>
-          <div class="transfer-help">
-            <b>등록된 인사 이동</b>
-            <div id="transferPreview" class="transfer-preview empty">아직 등록된 인사 이동 기준이 없습니다.</div>
-            <ul>
-              <li>등록 후 시작일 이후 변경 점포를 본인 매장으로 처리</li>
-              <li>기준점포가 아닌 곳에서 출근 시 특별 근무 기록</li>
-              <li>특별 근무일은 지각 여부와 관계없이 지각 제외</li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      <section class="run-panel">
-        <div id="status" class="status">파일 3개를 업로드한 뒤 분석을 실행하세요.</div>
-        <div class="actions">
-          <button id="runBtn">근태 분석 실행</button>
-          <button id="resetBtn" class="secondary">초기화</button>
-        </div>
-      </section>
-
-      <section class="panel guide" id="output">
-        <div class="section-head">
-          <div>
-            <p>OUTPUT</p>
-            <h2>생성되는 시트</h2>
-          </div>
-          <span class="section-badge">Excel Report</span>
-        </div>
-        <div class="sheet-list">
-          <span>CE 근태 미입력</span>
-          <span>MX 최종 요약</span>
-          <span>MX 지각</span>
-          <span>MX 근태 미입력</span>
-          <span>MX 퇴근 미입력</span>
-          <span>MX 소명처리</span>
-          <span>특별 근무</span>
-          <span>인사이동 기준</span>
-          <span>연차 확인</span>
-          <span>휴무 초과 확인</span>
-          <span>MX 연차 수당 확인</span>
-          <span>MX 연차 사용 누적</span>
-          <span>연차수당지급DB</span>
-          <span>연차사용누적DB</span>
-          <span>읽기 확인_매장계획</span>
-          <span>스케줄 불일치</span>
-        </div>
-      </section>
-
-      <section class="panel preview-panel">
-        <div class="section-head">
-          <div>
-            <p>PREVIEW</p>
-            <h2>보고용 결과 미리보기</h2>
-          </div>
-        </div>
-        <div class="preview-table">
-          <table>
-            <thead>
-              <tr><th>구분</th><th>이름</th><th>기준점포</th><th>지각</th><th>근태 미입력</th><th>퇴근 미입력</th><th>특별 근무</th><th>연차수당</th></tr>
-            </thead>
-            <tbody>
-              <tr><td>MX</td><td>강문흠</td><td>대구혁신점</td><td>0</td><td>0</td><td>1</td><td><span class="badge blue">확인</span></td><td><span class="badge green">지급</span></td></tr>
-              <tr><td>MX</td><td>우예빈</td><td>양재점</td><td>1</td><td>0</td><td>0</td><td>-</td><td><span class="badge gray">미지급</span></td></tr>
-              <tr><td>CE</td><td>상담사</td><td>광명점</td><td>-</td><td>1</td><td>-</td><td>-</td><td>-</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p class="note"><b>V2.0.2</b>은 웍스스케줄 없이 매장근무계획관리 기준으로 근태를 판정합니다. 기준점포가 아닌 출근지점은 <b>특별 근무</b>로 분리하고, 해당일은 지각에서 제외합니다.</p>
-      </section>
+          <div class="upload-footer"><div><label for="filePrevious" class="optional-label">이전 월 분석결과 (선택)</label><input id="filePrevious" type="file" accept=".xlsx" /><small>직전 결과의 숨김 누적데이터를 읽습니다. 이월 주차/대체휴일 연결을 위해 권장.</small></div><div class="month-select"><label for="analysisMonth">분석 대상월</label><input id="analysisMonth" type="month" /><small>날짜가 파일명과 달라도 이 월을 적용합니다.</small></div><div class="month-select"><label for="cutoffDate">판정 기준일 (선택)</label><input id="cutoffDate" type="date"/><small>비워두면 업로드한 근태의 해당 월 마지막 일자로 자동 설정합니다.</small></div></div>
+          <div id="fileStatus" class="inline-message" aria-live="polite">네 개의 파일을 선택해 주세요.</div>
+        </section>
+        <section id="holidays" class="panel"><div class="section-header"><div><span class="section-index">02 / LEAVE ENTITLEMENT</span><h2>대체휴일 발생 등록</h2><p>발생일과 사용 가능한 시작·종료일을 각각 등록합니다. 발생일에 이미 쉰 직원은 다른 날 대체휴일 사용 시 중복을 확인합니다.</p></div><span class="tag-outline">날짜 단위 · 월 단위 아님</span></div>
+          <div class="policy-grid"><div class="field"><label for="eventTitle">발생 사유</label><input id="eventTitle" placeholder="예: 성탄절" /></div><div class="field"><label for="eventDate">발생일</label><input id="eventDate" type="date" /></div><div class="field"><label for="eventAmount">발생 개수</label><select id="eventAmount"><option value="1">1일</option><option value="0.5">0.5일</option></select></div><div class="field"><label for="eventStart">사용 가능 시작일</label><input id="eventStart" type="date" /></div><div class="field"><label for="eventEnd">사용 가능 종료일</label><input id="eventEnd" type="date" /></div><button class="btn btn-outline" id="addEvent">+ 기준 추가</button></div>
+          <div class="hint"><b>예시만 안내:</b> 2026-12-25 발생 · 2026-12-01~12-31 사용 가능. 이 예시는 자동 등록되지 않습니다. <b>12월 25일 이후 입사자는 발생 대상에서 제외</b>되며, 당일 휴무 + 다른 날 대체휴일은 중복 검토합니다.</div>
+          <div class="table-holder"><table class="mini-table"><thead><tr><th>발생 사유</th><th>발생일</th><th>사용기간</th><th>개수</th><th>관리</th></tr></thead><tbody id="eventRows"><tr><td colspan="5" class="empty-row">등록된 대체휴일 발생 기준이 없습니다.</td></tr></tbody></table></div>
+        </section>
+        <section id="personnel" class="panel"><div class="section-header"><div><span class="section-index">03 / PERSONNEL</span><h2>입사일 · 예외 사번 관리</h2><p>월별 근무계획에는 입사일이 없으므로 신규 입사자는 여기 등록해야 대체휴일 발생 자격을 정확하게 판정할 수 있습니다.</p></div><span class="tag-outline">선택 입력</span></div>
+          <div class="person-grid"><div class="field"><label for="personSelect">직원</label><select id="personSelect"><option value="">근무계획을 업로드하면 직원 목록이 나타납니다.</option></select></div><div class="field"><label for="personHire">입사일</label><input id="personHire" type="date" /></div><button id="saveHire" class="btn btn-outline">입사일 저장</button></div><p class="sub-info">입사일이 비어 있으면 해당 발생일의 근무계획으로 재직 여부를 참고하되, 확실하지 않은 건은 검토 대상으로 남깁니다. 사번이 달라도 이름으로 연결한 기록은 검증 시트에 따로 남깁니다.</p>
+          <div id="hireTags" class="hire-tags"><span>등록된 입사일 없음</span></div>
+        </section>
+        <section class="panel run-section"><div><span class="section-index">04 / REPORT</span><h2>분석 실행</h2><p>기준시간에 출근해도 지각입니다. 변경 출퇴근시간은 승인 여부가 불명확하므로 기본적으로 실제 기록을 사용합니다.</p><label class="toggle-line"><input type="checkbox" id="useModified"/><span>수정 출퇴근시간(F·G열)을 실제 시각보다 우선 사용 (승인 확인 시)</span></label></div><div class="action-buttons"><button id="runBtn" class="btn btn-primary"><span>▶</span> 근태 분석 및 엑셀 생성</button><button id="resetBtn" class="btn btn-ghost">선택 초기화</button></div></section>
+        <div id="status" class="status" role="status" aria-live="polite">준비 완료 · 파일을 선택하고 분석을 실행하세요.</div>
+        <section id="report" class="panel"><div class="section-header"><div><span class="section-index">05 / RESULTS</span><h2>월별 분석 결과 미리보기</h2><p>분석 후 발생 건수와 검증 대상이 표시됩니다. 최종 판단은 원본 및 소명 결과를 함께 확인하세요.</p></div><button id="downloadBtn" class="btn btn-outline" disabled>엑셀 다시 다운로드 ↧</button></div><div class="result-switch"><button class="tab active" data-view="late">지각</button><button class="tab" data-view="week">주간 휴무</button><button class="tab" data-view="holiday">대체휴일 판정</button><button class="tab" data-view="issues">검증 필요</button></div><div class="table-holder preview-table"><table id="previewTable"><thead><tr><th>분석 전</th></tr></thead><tbody><tr><td class="empty-row">파일을 올리고 분석을 실행하면 미리보기가 표시됩니다.</td></tr></tbody></table></div><div class="report-foot">보고서에는 <b>최종 요약 · 지각 · 출근 미등록 · 퇴근 미등록 · 주간 휴무 · 대체휴일 판정 · 연차 대조 · 소명 처리 · 검증 · 설정·안내</b> 시트와 다음 달 이월용 누적 데이터가 포함됩니다.</div></section>
+        <section id="review" class="panel"><div class="section-header"><div><span class="section-index">06 / VERIFICATION</span><h2>증빙 인정 · 무단결근 확정</h2><p>분석 후 아래 내역별로 선택하세요. 증빙 인정은 감점에서 제외되며, 무단결근은 관리자가 확정한 경우에만 -20점을 적용합니다. 변경 후 <b>엑셀 다시 다운로드</b>를 누르면 반영됩니다.</p></div></div><div id="reviewList" class="review-list"><p>분석 후 검토할 근태 내역이 나타납니다.</p></div></section>
+        <footer class="footer">ZENIEL · COSTCO OPERATIONS <span>데이터는 브라우저에서 처리하며, 결과 엑셀은 사용자가 직접 보관합니다.</span></footer>
+      </div>
     </main>
   </div>
-
-  <script src="app.js"></script>
 </body>
 </html>
