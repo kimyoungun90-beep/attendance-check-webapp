@@ -5,9 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#0b332b" />
   <title>코스트코 근태 · 휴무 통합관리 | ZENIEL</title>
-  <link rel="stylesheet" href="style.css?v=1.0.2" />
-  <script defer src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
-  <script defer src="app.js?v=1.0.2"></script>
+  <link rel="stylesheet" href="style.css?v=1.1.0" />
+  <script defer src="vendor/xlsx.bundle.js"></script>
+  <script defer src="app.js?v=1.1.0"></script>
+  <script defer src="vendor/fflate.js"></script>
+  <script defer src="workspace.js?v=1.1.0"></script>
+  <script defer src="closing.js?v=1.1.0"></script>
+  <link rel="stylesheet" href="workspace.css?v=1.1.0">
 </head>
 <body>
   <div class="app-shell">
@@ -15,21 +19,22 @@
       <div class="side-top"><div class="logo-mark">Z</div><div><b>ZENIEL</b><span>COSTCO OPERATIONS</span></div></div>
       <nav aria-label="메뉴">
         <a href="#overview" class="nav-link active"><span class="nav-icon">▣</span> 대시보드</a>
+        <a href="#annual" class="nav-link"><span class="nav-icon">▥</span> 27년 누계 확인 <small class="nav-new">NEW</small></a>
         <a href="#uploads" class="nav-link"><span class="nav-icon">↥</span> 엑셀 업로드</a>
         <a href="#holidays" class="nav-link"><span class="nav-icon">▦</span> 대체휴일 기준</a>
         <a href="#personnel" class="nav-link"><span class="nav-icon">♙</span> 입사일 관리</a>
-        <a href="#report" class="nav-link"><span class="nav-icon">▤</span> 분석 결과</a>
+        <a href="#report" class="nav-link"><span class="nav-icon">▤</span> 분석 결과</a><a href="#review" class="nav-link"><span class="nav-icon">✓</span> 소명 · 판정 관리</a><a href="#backup" class="nav-link"><span class="nav-icon">↧</span> 누계 백업 · 복원</a>
       </nav>
-      <div class="side-bottom"><div class="pulse"></div> 로컬 분석 · 서버 저장 없음 <small>직원 근태자료는 GitHub/Vercel에 업로드되지 않습니다.</small></div>
+      <div class="side-bottom"><div class="pulse"></div> 이 브라우저에 누계 저장 <small>백업 파일로 다른 PC에서 복원할 수 있습니다.</small></div>
     </aside>
     <main class="main">
-      <header class="topbar"><div><div class="eyebrow">WORKFORCE INTELLIGENCE</div><div class="topbar-title">코스트코 근태 · 휴무 통합관리</div></div><div class="top-actions"><span class="version">VERSION 1.0.2</span><span class="pill">2026 · 새 설계</span></div></header>
+      <header class="topbar"><div><div class="eyebrow">WORKFORCE INTELLIGENCE</div><div class="topbar-title">코스트코 근태 · 휴무 통합관리</div></div><div class="top-actions"><span class="version">VERSION 1.1.0</span><span class="pill">COSTCO · 근태 운영</span></div></header>
       <div class="content">
         <section id="overview" class="intro-section">
-          <div><div class="eyebrow">ZENIEL / COSTCO</div><h1>근무 기록부터<br><em>휴무 적정성</em>까지.</h1><p>네 개의 월별 엑셀을 연결해 지각, 출퇴근 누락, 연차 신청, 주간 휴무 및 대체휴일을 한 번에 검증합니다.</p><div class="intro-pills"><span>사번 우선 연결</span><span>월요일~일요일 주차</span><span>대체휴일 중복 검증</span></div></div>
+          <div><div class="eyebrow">ZENIEL / COSTCO</div><h1>한눈에 파악하고,<br><em>놓침 없이 관리하세요.</em></h1><p>네 개의 월별 엑셀을 연결해 지각, 출퇴근 누락, 연차 신청, 주간 휴무 및 대체휴일을 한 번에 검증합니다.</p><div class="intro-pills"><span>사번 우선 연결</span><span>월요일~일요일 주차</span><span>대체휴일 중복 검증</span></div></div>
           <div class="hero-panel"><div class="hero-kicker">ANALYSIS FLOW</div><div class="hero-flow"><span>01</span><div>월별 원본 확인<small>근무계획 · 근태 · 연차 · 영업시간</small></div></div><div class="flow-separator"></div><div class="hero-flow"><span>02</span><div>규정 및 대체휴일 적용<small>발생일 / 사용기간 / 입사일</small></div></div><div class="flow-separator"></div><div class="hero-flow"><span>03</span><div>검증용 엑셀 다운로드<small>세부 내역 · 소명 · 이월 데이터</small></div></div></div>
         </section>
-        <div class="metrics" id="metrics"><div class="metric"><div class="metric-label">계획서 인원</div><div class="metric-value" id="statPeople">—</div><div class="metric-desc">이번 월 입력 기준</div></div><div class="metric"><div class="metric-label">지각 확인 건</div><div class="metric-value" id="statLate">—</div><div class="metric-desc">교육 제외 · 기준시간 포함</div></div><div class="metric"><div class="metric-label">출퇴근 입력 이상</div><div class="metric-value" id="statMissing">—</div><div class="metric-desc">출근 + 퇴근 미등록</div></div><div class="metric"><div class="metric-label">대체휴일 검토</div><div class="metric-value" id="statHoliday">—</div><div class="metric-desc">중복·대상 확인 필요</div></div></div>
+        <div class="metrics" id="metrics"><div class="metric"><div class="metric-label">계획서 인원</div><div class="metric-value" id="statPeople">—</div><div class="metric-desc">이번 월 입력 기준</div></div><div class="metric"><div class="metric-label">지각 확인 건</div><div class="metric-value" id="statLate">—</div><div class="metric-desc">면제된 지각도 발생 건수에 포함</div></div><div class="metric"><div class="metric-label">출퇴근 입력 이상</div><div class="metric-value" id="statMissing">—</div><div class="metric-desc">출근 + 퇴근 미등록</div></div><div class="metric"><div class="metric-label">대체휴일 검토</div><div class="metric-value" id="statHoliday">—</div><div class="metric-desc">중복·대상 확인 필요</div></div></div>
         <section id="uploads" class="panel"><div class="section-header"><div><span class="section-index">01 / DATA SOURCES</span><h2>월별 파일 업로드</h2><p>같은 월의 엑셀을 선택해 주세요. 이전 월 결과는 이월 주차와 대체휴일 이력을 이어 붙이는 데 사용합니다.</p></div><span class="tag-neutral">파일 4개 필수</span></div>
           <div class="uploads">
             <label class="upload-tile"><span class="upload-number">01</span><span class="upload-symbol">▤</span><strong>매장근무계획관리</strong><small>직원별 점포 · 근무조 · 휴무</small><span class="upload-select" id="namePlan">파일 선택</span><input id="filePlan" type="file" accept=".xlsx,.xls" required></label>
@@ -49,11 +54,13 @@
           <div class="person-grid"><div class="field"><label for="personSelect">직원</label><select id="personSelect"><option value="">근무계획을 업로드하면 직원 목록이 나타납니다.</option></select></div><div class="field"><label for="personHire">입사일</label><input id="personHire" type="date" /></div><button id="saveHire" class="btn btn-outline">입사일 저장</button></div><p class="sub-info">입사일이 비어 있으면 해당 발생일의 근무계획으로 재직 여부를 참고하되, 확실하지 않은 건은 검토 대상으로 남깁니다. 사번이 달라도 이름으로 연결한 기록은 검증 시트에 따로 남깁니다.</p>
           <div id="hireTags" class="hire-tags"><span>등록된 입사일 없음</span></div>
         </section>
-        <section class="panel run-section"><div><span class="section-index">04 / REPORT</span><h2>분석 실행</h2><p>기준시간에 출근해도 지각입니다. 변경 출퇴근시간은 승인 여부가 불명확하므로 기본적으로 실제 기록을 사용합니다.</p><label class="toggle-line"><input type="checkbox" id="useModified"/><span>수정 출퇴근시간(F·G열)을 실제 시각보다 우선 사용 (승인 확인 시)</span></label></div><div class="action-buttons"><button id="runBtn" class="btn btn-primary"><span>▶</span> 근태 분석 및 엑셀 생성</button><button id="resetBtn" class="btn btn-ghost">선택 초기화</button></div></section>
+        <section class="panel run-section"><div><span class="section-index">04 / REPORT</span><h2>분석 실행</h2><p>기준시간에 출근해도 지각입니다. 변경 출퇴근시간은 승인 여부가 불명확하므로 기본적으로 실제 기록을 사용합니다.</p><label class="toggle-line"><input type="checkbox" id="useModified"/><span>수정 출퇴근시간(F·G열)을 실제 시각보다 우선 사용 (승인 확인 시)</span></label></div><div class="action-buttons"><button id="runBtn" class="btn btn-primary"><span>▶</span> 월별 근태 분석하기</button><button id="resetBtn" class="btn btn-ghost">선택 초기화</button></div></section>
         <div id="status" class="status" role="status" aria-live="polite">준비 완료 · 파일을 선택하고 분석을 실행하세요.</div>
-        <section id="report" class="panel"><div class="section-header"><div><span class="section-index">05 / RESULTS</span><h2>월별 분석 결과 미리보기</h2><p>분석 후 발생 건수와 검증 대상이 표시됩니다. 최종 판단은 원본 및 소명 결과를 함께 확인하세요.</p></div><button id="downloadBtn" class="btn btn-outline" disabled>엑셀 다시 다운로드 ↧</button></div><div class="result-switch"><button class="tab active" data-view="late">지각</button><button class="tab" data-view="week">주간 휴무</button><button class="tab" data-view="holiday">대체휴일 판정</button><button class="tab" data-view="issues">검증 필요</button></div><div class="table-holder preview-table"><table id="previewTable"><thead><tr><th>분석 전</th></tr></thead><tbody><tr><td class="empty-row">파일을 올리고 분석을 실행하면 미리보기가 표시됩니다.</td></tr></tbody></table></div><div class="report-foot">보고서에는 <b>최종 요약 · 지각 · 출근 미등록 · 퇴근 미등록 · 주간 휴무 · 대체휴일 판정 · 연차 대조 · 소명 처리 · 검증 · 설정·안내</b> 시트와 다음 달 이월용 누적 데이터가 포함됩니다.</div></section>
+        <section id="report" class="panel"><div class="section-header"><div><span class="section-index">05 / RESULTS</span><h2>월별 분석 결과 미리보기</h2><p>분석 후 발생 건수와 검증 대상이 표시됩니다. 최종 판단은 원본 및 소명 결과를 함께 확인하세요.</p></div><button id="downloadBtn" class="btn btn-outline" disabled>지각 · 근태 엑셀 ↧</button></div><div class="result-switch"><button class="tab active" data-view="late">지각</button><button class="tab" data-view="week">주간 휴무</button><button class="tab" data-view="holiday">대체휴일 판정</button><button class="tab" data-view="issues">검증 필요</button></div><div class="table-holder preview-table"><table id="previewTable"><thead><tr><th>분석 전</th></tr></thead><tbody><tr><td class="empty-row">파일을 올리고 분석을 실행하면 미리보기가 표시됩니다.</td></tr></tbody></table></div><div class="report-foot">보고서에는 <b>최종 요약 · 지각 · 출근 미등록 · 퇴근 미등록 · 주간 휴무 · 대체휴일 판정 · 연차 대조 · 소명 처리 · 검증 · 설정·안내</b> 시트와 다음 달 이월용 누적 데이터가 포함됩니다.</div></section>
         <section id="review" class="panel"><div class="section-header"><div><span class="section-index">06 / VERIFICATION</span><h2>증빙 인정 · 무단결근 확정</h2><p>분석 후 아래 내역별로 선택하세요. 증빙 인정은 감점에서 제외되며, 무단결근은 관리자가 확정한 경우에만 -20점을 적용합니다. 변경 후 <b>엑셀 다시 다운로드</b>를 누르면 반영됩니다.</p></div></div><div id="reviewList" class="review-list"><p>분석 후 검토할 근태 내역이 나타납니다.</p></div></section>
-        <footer class="footer">ZENIEL · COSTCO OPERATIONS <span>데이터는 브라우저에서 처리하며, 결과 엑셀은 사용자가 직접 보관합니다.</span></footer>
+        <section id="annual" class="panel"><div class="section-header"><div><span class="section-index">2027 / ATTENDANCE INSIGHTS</span><h2>27년 누계 확인</h2><p>감점 면제 여부와 관계없이 발생한 기록을 보존합니다. 월별 자료를 분석하면 해당 월 누계가 갱신됩니다.</p></div><span class="tag-neutral">2027.01 — 2027.12</span></div><div id="annualApp"></div></section>
+        <section id="backup" class="panel"><div class="section-header"><div><span class="section-index">DATA / BACKUP</span><h2>누계 백업 · 복원</h2><p>이 브라우저에 저장된 누계를 파일로 보관하세요. 다른 PC와 자동으로 공유되지는 않습니다.</p></div></div><div id="backupStatus" class="hint" role="status"></div><div class="backup-actions"><button id="saveBackup" class="btn btn-primary">전체 누계 백업 다운로드</button><label class="btn btn-outline">백업 파일 복원<input id="restoreBackup" type="file" accept=".json" hidden></label></div><div class="hint">복원하면 현재 브라우저의 자료를 대체합니다. 복원 직전에 현재 자료의 백업을 자동 다운로드합니다. 원본 엑셀과 백업 파일은 별도로 보관하세요.</div></section>
+        <footer class="footer">ZENIEL · COSTCO OPERATIONS <span>브라우저 내부 분석 · 로컬 누계 저장 · 파일 백업 지원</span></footer>
       </div>
     </main>
   </div>
