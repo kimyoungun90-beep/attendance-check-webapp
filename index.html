@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#0b332b" />
   <title>코스트코 근태 · 휴무 통합관리 | ZENIEL</title>
-  <link rel="stylesheet" href="style.css?v=1.1.0" />
+  <link rel="stylesheet" href="style.css?v=1.2.1" />
   <script defer src="vendor/xlsx.bundle.js"></script>
-  <script defer src="app.js?v=1.1.0"></script>
+  <script defer src="app.js?v=1.2.1"></script>
   <script defer src="vendor/fflate.js"></script>
-  <script defer src="workspace.js?v=1.1.0"></script>
-  <script defer src="closing.js?v=1.1.0"></script>
-  <link rel="stylesheet" href="workspace.css?v=1.1.0">
+  <script defer src="workspace.js?v=1.2.1"></script>
+  <script defer src="xlsx-performance.js?v=1.2.1"></script>
+  <script defer src="closing.js?v=1.2.1"></script>
+  <link rel="stylesheet" href="workspace.css?v=1.2.1">
 </head>
 <body>
   <div class="app-shell">
@@ -19,7 +20,7 @@
       <div class="side-top"><div class="logo-mark">Z</div><div><b>ZENIEL</b><span>COSTCO OPERATIONS</span></div></div>
       <nav aria-label="메뉴">
         <a href="#overview" class="nav-link active"><span class="nav-icon">▣</span> 대시보드</a>
-        <a href="#annual" class="nav-link"><span class="nav-icon">▥</span> 27년 누계 확인 <small class="nav-new">NEW</small></a>
+        <a href="#annual" class="nav-link"><span class="nav-icon">▥</span> 연도별 누계 확인 <small class="nav-new">NEW</small></a>
         <a href="#uploads" class="nav-link"><span class="nav-icon">↥</span> 엑셀 업로드</a>
         <a href="#holidays" class="nav-link"><span class="nav-icon">▦</span> 대체휴일 기준</a>
         <a href="#personnel" class="nav-link"><span class="nav-icon">♙</span> 입사일 관리</a>
@@ -28,7 +29,7 @@
       <div class="side-bottom"><div class="pulse"></div> 이 브라우저에 누계 저장 <small>백업 파일로 다른 PC에서 복원할 수 있습니다.</small></div>
     </aside>
     <main class="main">
-      <header class="topbar"><div><div class="eyebrow">WORKFORCE INTELLIGENCE</div><div class="topbar-title">코스트코 근태 · 휴무 통합관리</div></div><div class="top-actions"><span class="version">VERSION 1.1.0</span><span class="pill">COSTCO · 근태 운영</span></div></header>
+      <header class="topbar"><div><div class="eyebrow">WORKFORCE INTELLIGENCE</div><div class="topbar-title">코스트코 근태 · 휴무 통합관리</div></div><div class="top-actions"><span class="version">VERSION 1.2.1</span><span class="pill">COSTCO · 근태 운영</span></div></header>
       <div class="content">
         <section id="overview" class="intro-section">
           <div><div class="eyebrow">ZENIEL / COSTCO</div><h1>한눈에 파악하고,<br><em>놓침 없이 관리하세요.</em></h1><p>네 개의 월별 엑셀을 연결해 지각, 출퇴근 누락, 연차 신청, 주간 휴무 및 대체휴일을 한 번에 검증합니다.</p><div class="intro-pills"><span>사번 우선 연결</span><span>월요일~일요일 주차</span><span>대체휴일 중복 검증</span></div></div>
@@ -58,7 +59,7 @@
         <div id="status" class="status" role="status" aria-live="polite">준비 완료 · 파일을 선택하고 분석을 실행하세요.</div>
         <section id="report" class="panel"><div class="section-header"><div><span class="section-index">05 / RESULTS</span><h2>월별 분석 결과 미리보기</h2><p>분석 후 발생 건수와 검증 대상이 표시됩니다. 최종 판단은 원본 및 소명 결과를 함께 확인하세요.</p></div><button id="downloadBtn" class="btn btn-outline" disabled>지각 · 근태 엑셀 ↧</button></div><div class="result-switch"><button class="tab active" data-view="late">지각</button><button class="tab" data-view="week">주간 휴무</button><button class="tab" data-view="holiday">대체휴일 판정</button><button class="tab" data-view="issues">검증 필요</button></div><div class="table-holder preview-table"><table id="previewTable"><thead><tr><th>분석 전</th></tr></thead><tbody><tr><td class="empty-row">파일을 올리고 분석을 실행하면 미리보기가 표시됩니다.</td></tr></tbody></table></div><div class="report-foot">보고서에는 <b>최종 요약 · 지각 · 출근 미등록 · 퇴근 미등록 · 주간 휴무 · 대체휴일 판정 · 연차 대조 · 소명 처리 · 검증 · 설정·안내</b> 시트와 다음 달 이월용 누적 데이터가 포함됩니다.</div></section>
         <section id="review" class="panel"><div class="section-header"><div><span class="section-index">06 / VERIFICATION</span><h2>증빙 인정 · 무단결근 확정</h2><p>분석 후 아래 내역별로 선택하세요. 증빙 인정은 감점에서 제외되며, 무단결근은 관리자가 확정한 경우에만 -20점을 적용합니다. 변경 후 <b>엑셀 다시 다운로드</b>를 누르면 반영됩니다.</p></div></div><div id="reviewList" class="review-list"><p>분석 후 검토할 근태 내역이 나타납니다.</p></div></section>
-        <section id="annual" class="panel"><div class="section-header"><div><span class="section-index">2027 / ATTENDANCE INSIGHTS</span><h2>27년 누계 확인</h2><p>감점 면제 여부와 관계없이 발생한 기록을 보존합니다. 월별 자료를 분석하면 해당 월 누계가 갱신됩니다.</p></div><span class="tag-neutral">2027.01 — 2027.12</span></div><div id="annualApp"></div></section>
+        <section id="annual" class="panel"><div class="section-header"><div><span class="section-index">ANNUAL / ATTENDANCE INSIGHTS</span><h2>연도별 누계 확인</h2><p>감점 면제 여부와 관계없이 발생한 기록을 보존합니다. 월별 자료를 분석하면 해당 월 누계가 갱신됩니다.</p></div><span class="tag-neutral" id="annualPeriod"></span></div><div id="annualApp"></div></section>
         <section id="backup" class="panel"><div class="section-header"><div><span class="section-index">DATA / BACKUP</span><h2>누계 백업 · 복원</h2><p>이 브라우저에 저장된 누계를 파일로 보관하세요. 다른 PC와 자동으로 공유되지는 않습니다.</p></div></div><div id="backupStatus" class="hint" role="status"></div><div class="backup-actions"><button id="saveBackup" class="btn btn-primary">전체 누계 백업 다운로드</button><label class="btn btn-outline">백업 파일 복원<input id="restoreBackup" type="file" accept=".json" hidden></label></div><div class="hint">복원하면 현재 브라우저의 자료를 대체합니다. 복원 직전에 현재 자료의 백업을 자동 다운로드합니다. 원본 엑셀과 백업 파일은 별도로 보관하세요.</div></section>
         <footer class="footer">ZENIEL · COSTCO OPERATIONS <span>브라우저 내부 분석 · 로컬 누계 저장 · 파일 백업 지원</span></footer>
       </div>

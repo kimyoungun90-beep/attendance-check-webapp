@@ -3,7 +3,7 @@
 */
 (() => {
 'use strict';
-const VERSION='1.1.0';
+const VERSION='1.2.1';
 const STATE_SHEET='_STATE';
 const FIELDS=['filePlan','fileAttendance','fileLeave','fileHours'];
 const $=id=>document.getElementById(id);
